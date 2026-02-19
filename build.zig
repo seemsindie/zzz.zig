@@ -15,10 +15,18 @@ pub fn build(b: *std.Build) void {
     const backend_options = b.addOptions();
     backend_options.addOption([]const u8, "backend", backend);
 
+    const zzz_template_dep = b.dependency("zzz_template", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const mod = b.addModule("zzz", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
+
+    // Add zzz_template module
+    mod.addImport("zzz_template", zzz_template_dep.module("zzz_template"));
 
     // Add TLS options module
     mod.addImport("tls_options", tls_options.createModule());
@@ -262,6 +270,9 @@ pub fn build(b: *std.Build) void {
             }),
         });
         t.root_module.link_libc = true;
+
+        // All tests transitively import template/engine.zig which re-exports from zzz_template
+        t.root_module.addImport("zzz_template", zzz_template_dep.module("zzz_template"));
 
         // Backend tests need the same options modules as the main zzz module
         if (comptime std.mem.eql(u8, name, "test-backend")) {

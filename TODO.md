@@ -665,15 +665,15 @@ _(Moved to Phase 9: Release Preparation)_
 - [ ] Optional: cache adapter interface (in-memory, Redis, distributed)
 
 ### Mailer
-- [ ] `zzz.Mailer` module — email sending abstraction
-- [ ] SMTP client implementation (connect, AUTH, STARTTLS, send)
-- [ ] Adapter pattern: SMTP, SendGrid API, Mailgun API, test/log adapter
-- [ ] Email struct: to, cc, bcc, subject, text_body, html_body, attachments
-- [ ] Template rendering for email bodies (reuse zzz template engine)
-- [ ] Async delivery via zzz_jobs integration (enqueue email as background job)
-- [ ] `zzz gen mailer WelcomeEmail` — CLI generator for mailer boilerplate
-- [ ] Test adapter: capture sent emails in-memory for test assertions
-- [ ] Rate limiting / throttling per adapter
+- [x] `zzz.Mailer` module — email sending abstraction
+- [x] SMTP client implementation (connect, AUTH, STARTTLS, send)
+- [x] Adapter pattern: SMTP, SendGrid API, Mailgun API, test/log adapter
+- [x] Email struct: to, cc, bcc, subject, text_body, html_body, attachments
+- [x] Template rendering for email bodies (reuse zzz template engine)
+- [x] Async delivery via zzz_jobs integration (enqueue email as background job)
+- [x] `zzz gen mailer WelcomeEmail` — CLI generator for mailer boilerplate
+- [x] Test adapter: capture sent emails in-memory for test assertions
+- [x] Rate limiting / throttling per adapter
 
 ### Internationalization (i18n)
 - [ ] Locale files (JSON): `locales/en.json`, `locales/es.json`, etc.
