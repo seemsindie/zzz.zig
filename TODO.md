@@ -213,7 +213,7 @@ zig build run -- --some-arg
 - [x] fetch() wrapper with auto CSRF token (`zzz.js`)
 - [x] AJAX form submission helper (`zzz.js`)
 - [x] zzz.js serving middleware at `/__zzz/zzz.js` (`src/middleware/zzz_js.zig`)
-- [x] Example WebSocket echo demo page (`example_app/src/templates/ws_demo.html.zzz`)
+- [x] Example WebSocket echo demo page (`zzz_example_app/src/templates/ws_demo.html.zzz`)
 
 ### Server Integration
 - [x] Response WebSocketUpgrade struct (`src/core/http/response.zig`)
@@ -518,7 +518,7 @@ _(Moved to Phase 9: Release Preparation)_
 - [x] README.md for zzz_db (setup, schema, queries, migrations)
 - [x] README.md for zzz_jobs (job definition, queues, scheduling)
 - [x] README.md for zzz_cli (installation, commands reference)
-- [x] README.md for example_app (how to run, what it demonstrates)
+- [x] README.md for zzz_example_app (how to run, what it demonstrates)
 - [x] CONTRIBUTING.md (code style, PR process, testing)
 - [x] SECURITY.md (vulnerability reporting)
 - [x] GitHub issue templates (bug report, feature request)
@@ -550,9 +550,9 @@ _(Moved to Phase 9: Release Preparation)_
 - [x] GitHub Actions CI (build + test on Linux + macOS)
 - [x] Release builds for common targets
 - [ ] Package published to Zig package index
-- [x] Docker image for deployment (zzz_cli + example_app Dockerfiles)
+- [x] Docker image for deployment (zzz_cli + zzz_example_app Dockerfiles)
 - [x] Example docker-compose with PostgreSQL
-- [x] CI workflows for zzz_cli and example_app (build-only)
+- [x] CI workflows for zzz_cli and zzz_example_app (build-only)
 
 ### Package Publishing
 - [x] Convert local path dependencies to package references (zzz_jobs -> zzz_db)

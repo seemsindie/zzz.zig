@@ -49,7 +49,7 @@ Thanks for your interest in contributing! This guide covers the basics.
 Every module has inline tests. Run the full test suite with:
 
 ```bash
-cd zzz && zig build test      # 281 tests
+cd zzz.zig && zig build test  # 281 tests
 cd zzz_db && zig build test   # SQLite tests
 cd zzz_jobs && zig build test # Job processing tests
 ```

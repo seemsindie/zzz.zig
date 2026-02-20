@@ -160,7 +160,7 @@ zigweb_workspace/
     build.zig
     build.zig.zon
 
-  example_app/             # Sample Phoenix-like application
+  zzz_example_app/         # Sample Phoenix-like application
     src/
       main.zig             # Application entry
       router.zig           # App router
