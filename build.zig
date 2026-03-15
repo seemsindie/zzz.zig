@@ -1,5 +1,10 @@
 const std = @import("std");
 
+fn linkOpenSsl(module: *std.Build.Module, openssl_dep: *std.Build.Dependency) void {
+    module.linkLibrary(openssl_dep.artifact("ssl"));
+    module.linkLibrary(openssl_dep.artifact("crypto"));
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -45,18 +50,16 @@ pub fn build(b: *std.Build) void {
     tls_mod.link_libc = true;
     mod.addImport("tls", tls_mod);
 
+    const openssl_dep = if (tls_enabled)
+        b.dependency("openssl", .{ .target = target, .optimize = optimize })
+    else
+        null;
+
     if (tls_enabled) {
-        // Link OpenSSL libraries
-        mod.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/include" });
-        mod.linkSystemLibrary("ssl", .{});
-        mod.linkSystemLibrary("crypto", .{});
-        mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/lib" });
+        linkOpenSsl(mod, openssl_dep.?);
         mod.link_libc = true;
 
-        tls_mod.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/include" });
-        tls_mod.linkSystemLibrary("ssl", .{});
-        tls_mod.linkSystemLibrary("crypto", .{});
-        tls_mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/lib" });
+        linkOpenSsl(tls_mod, openssl_dep.?);
         tls_mod.link_libc = true;
     }
 
@@ -124,12 +127,6 @@ pub fn build(b: *std.Build) void {
             .flags = libhv_c_flags,
         });
 
-        // Link OpenSSL for libhv C sources when TLS is enabled
-        if (tls_enabled) {
-            mod.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/include" });
-            mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/lib" });
-        }
-
         // Platform-specific event source
         if (target.result.os.tag == .linux) {
             mod.addCSourceFiles(.{
@@ -174,8 +171,6 @@ pub fn build(b: *std.Build) void {
     }
 
     // ── Shared zzz_db module for benchmarks ────────────────────────────
-    const is_macos = target.result.os.tag == .macos;
-
     const db_options = b.addOptions();
     db_options.addOption(bool, "sqlite_enabled", true);
     db_options.addOption(bool, "postgres_enabled", false);
@@ -185,12 +180,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     zzz_db_mod.addImport("db_options", db_options.createModule());
-    zzz_db_mod.linkSystemLibrary("sqlite3", .{});
+    zzz_db_mod.addCSourceFiles(.{
+        .files = &.{"../zzz_db/vendor/sqlite3/sqlite3.c"},
+        .flags = &.{"-DSQLITE_THREADSAFE=1"},
+    });
+    zzz_db_mod.addIncludePath(.{ .cwd_relative = "../zzz_db/vendor/sqlite3" });
     zzz_db_mod.link_libc = true;
-    if (is_macos) {
-        zzz_db_mod.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/include" });
-        zzz_db_mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/lib" });
-    }
 
     // ── Benchmark server ────────────────────────────────────────────────
     const bench_exe = b.addExecutable(.{
@@ -205,12 +200,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    bench_exe.root_module.linkSystemLibrary("sqlite3", .{});
     bench_exe.root_module.link_libc = true;
-    if (is_macos) {
-        bench_exe.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/include" });
-        bench_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/lib" });
-    }
     const install_bench = b.addInstallArtifact(bench_exe, .{});
     const bench_step = b.step("bench", "Build benchmark server (ReleaseFast)");
     bench_step.dependOn(&install_bench.step);
@@ -227,12 +217,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    bench_sqlite_exe.root_module.linkSystemLibrary("sqlite3", .{});
     bench_sqlite_exe.root_module.link_libc = true;
-    if (is_macos) {
-        bench_sqlite_exe.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/include" });
-        bench_sqlite_exe.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/sqlite/lib" });
-    }
     const install_bench_sqlite = b.addInstallArtifact(bench_sqlite_exe, .{});
 
     const bench_sqlite_step = b.step("bench-sqlite", "Build and run SQLite benchmark");
@@ -330,8 +315,7 @@ pub fn build(b: *std.Build) void {
                 t.root_module.addIncludePath(b.path("vendor/libhv/event"));
                 t.root_module.addIncludePath(b.path("vendor/libhv/ssl"));
                 if (tls_enabled) {
-                    t.root_module.addSystemIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/include" });
-                    t.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/lib" });
+                    linkOpenSsl(t.root_module, openssl_dep.?);
                 }
             }
         }
