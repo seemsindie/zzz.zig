@@ -12,6 +12,18 @@ const server_mod = @import("server.zig");
 const Handler = server_mod.Handler;
 const Config = server_mod.Config;
 
+/// Poll a socket for readability with a timeout (milliseconds).
+/// Returns true if data is available, false on timeout or error.
+fn pollReadable(fd: std.posix.fd_t, timeout_ms: i32) bool {
+    var pfds = [1]std.posix.pollfd{.{
+        .fd = fd,
+        .events = std.posix.POLL.IN,
+        .revents = 0,
+    }};
+    const n = std.posix.poll(&pfds, timeout_ms) catch return false;
+    return n > 0;
+}
+
 /// Handle the HTTP request/response loop over a reader/writer pair.
 /// Works identically for both plain TCP and TLS connections, and is
 /// backend-agnostic — any backend can call this with an Io.Reader/Io.Writer.
@@ -22,11 +34,20 @@ pub fn handleRequests(
     reader: *Io.Reader,
     writer: *Io.Writer,
     shutdown_flag: *const std.atomic.Value(bool),
+    socket_fd: std.posix.fd_t,
 ) void {
     var requests_served: u32 = 0;
 
     while (requests_served < config.max_requests_per_connection) {
         if (shutdown_flag.load(.acquire)) break;
+
+        // Poll for readability before reading — this replaces SO_RCVTIMEO
+        // which causes EAGAIN panics in std.Io on macOS.
+        const timeout_ms: i32 = if (requests_served == 0)
+            @intCast(config.read_timeout_ms)
+        else
+            @intCast(config.keepalive_timeout_ms);
+        if (!pollReadable(socket_fd, timeout_ms)) return;
 
         // Read request header byte by byte, looking for \r\n\r\n
         var req_buf: [16384]u8 = undefined;

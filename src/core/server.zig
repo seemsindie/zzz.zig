@@ -91,7 +91,9 @@ pub const Server = struct {
     pub fn handleConnection(self: *Server, io: Io, stream: *Io.net.Stream) void {
         defer stream.close(io);
 
-        // Set socket timeouts so reads/writes don't block indefinitely
+        // Set write timeout so sends don't block indefinitely.
+        // Read timeouts are handled via poll() in the request handler
+        // to avoid EAGAIN panics in std.Io on macOS.
         setSocketTimeouts(stream.socket.handle, self.config);
 
         if (tls_enabled) {
@@ -115,6 +117,7 @@ pub const Server = struct {
                     &tls_reader.interface,
                     &tls_writer.interface,
                     &self.shutdown_flag,
+                    stream.socket.handle,
                 );
                 return;
             }
@@ -133,14 +136,16 @@ pub const Server = struct {
             &reader.interface,
             &writer.interface,
             &self.shutdown_flag,
+            stream.socket.handle,
         );
     }
 
-    /// Set SO_RCVTIMEO and SO_SNDTIMEO on a socket fd.
+    /// Set SO_SNDTIMEO on a socket fd.
+    /// Note: SO_RCVTIMEO is intentionally not set — on macOS, read timeouts
+    /// cause EAGAIN which panics in std.Io. Read timeouts are handled via
+    /// poll() in the request handler instead.
     fn setSocketTimeouts(fd: std.posix.fd_t, config: Config) void {
-        const recv_tv = msToTimeval(config.read_timeout_ms);
         const send_tv = msToTimeval(config.write_timeout_ms);
-        std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, &std.mem.toBytes(recv_tv)) catch {};
         std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.SNDTIMEO, &std.mem.toBytes(send_tv)) catch {};
     }
 
