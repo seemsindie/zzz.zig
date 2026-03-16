@@ -269,7 +269,7 @@ test "writeFrame and readFrame: extended 16-bit length" {
 test "readFrame with masked payload" {
     // Build a masked frame manually: text "Hi" with mask [1,2,3,4]
     const mask = [_]u8{ 1, 2, 3, 4 };
-    var masked_payload = [_]u8{ 'H' ^ 1, 'i' ^ 2 };
+    const masked_payload = [_]u8{ 'H' ^ 1, 'i' ^ 2 };
     var frame_bytes: [8]u8 = undefined;
     frame_bytes[0] = 0x81; // FIN + text
     frame_bytes[1] = 0x82; // masked + length 2
