@@ -18,6 +18,8 @@ jobs:
     - uses: mlugg/setup-zig@v2
       with:
         version: 0.16.0-dev.2905+5d71e3051
+    - name: Clear stale package cache
+      run: rm -rf .zig-cache/p/
     - name: Build
       run: zig build
     - name: Test
