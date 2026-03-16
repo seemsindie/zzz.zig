@@ -6,6 +6,11 @@ const flate = std.compress.flate;
 /// Trailing sync marker stripped after compression / appended before decompression (RFC 7692).
 const deflate_tail = [_]u8{ 0x00, 0x00, 0xFF, 0xFF };
 
+/// Empty final stored block (BFINAL=1, BTYPE=00, LEN=0, NLEN=0xFFFF).
+/// Appended after the sync marker to properly terminate the DEFLATE stream
+/// so the decompressor sees a final block and stops cleanly.
+const deflate_final = [_]u8{ 0x01, 0x00, 0x00, 0xFF, 0xFF };
+
 /// Compress a WebSocket payload using raw DEFLATE (permessage-deflate, RFC 7692).
 /// Strips the trailing 0x00 0x00 0xFF 0xFF sync marker per the spec.
 /// Caller owns the returned slice.
@@ -31,22 +36,21 @@ pub fn compressPayload(allocator: Allocator, payload: []const u8) ![]u8 {
 /// Decompress a permessage-deflate payload by appending the sync marker and running raw DEFLATE decompression.
 /// Caller owns the returned slice.
 pub fn decompressPayload(allocator: Allocator, compressed: []const u8) ![]u8 {
-    // Append the sync marker back
-    const with_tail = try allocator.alloc(u8, compressed.len + 4);
+    if (compressed.len == 0) return try allocator.alloc(u8, 0);
+
+    // Append sync marker + final empty block to terminate the DEFLATE stream
+    const with_tail = try allocator.alloc(u8, compressed.len + deflate_tail.len + deflate_final.len);
     defer allocator.free(with_tail);
     @memcpy(with_tail[0..compressed.len], compressed);
-    @memcpy(with_tail[compressed.len..], &deflate_tail);
+    @memcpy(with_tail[compressed.len..][0..deflate_tail.len], &deflate_tail);
+    @memcpy(with_tail[compressed.len + deflate_tail.len ..], &deflate_final);
 
     // Decompress
     var reader: Io.Reader = .fixed(with_tail);
-    var decompressor = flate.Decompress.init(&reader, .raw, &.{});
+    var window_buf: [flate.max_window_len]u8 = undefined;
+    var decompressor = flate.Decompress.init(&reader, .raw, &window_buf);
 
-    var aw: Io.Writer.Allocating = try .initCapacity(allocator, if (compressed.len > 16) compressed.len * 2 else 64);
-    errdefer aw.deinit();
-
-    _ = try decompressor.reader.streamRemaining(&aw.writer);
-
-    return try aw.toOwnedSlice();
+    return try decompressor.reader.allocRemaining(allocator, .unlimited);
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
