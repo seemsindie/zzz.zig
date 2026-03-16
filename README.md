@@ -1,4 +1,4 @@
-# zzz
+# zzz.zig
 
 A Phoenix-inspired, batteries-included web framework written in Zig.
 
