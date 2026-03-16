@@ -1,6 +1,11 @@
 # zzz
 
-A Phoenix-inspired, batteries-included web framework written in Zig. Blazing fast, memory-safe, with compile-time route resolution.
+A Phoenix-inspired, batteries-included web framework written in Zig.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Zig](https://img.shields.io/badge/Zig-0.16.0-orange.svg)](https://ziglang.org/)
+
+A fast, memory-safe web framework with compile-time route resolution, a rich middleware stack, WebSocket channels, and template rendering. Designed for developers who want Rails/Phoenix-level productivity with Zig-level performance.
 
 ## Features
 
@@ -15,7 +20,7 @@ A Phoenix-inspired, batteries-included web framework written in Zig. Blazing fas
 - **Authentication** -- Bearer, Basic, and JWT (HS256) middleware
 - **htmx Integration** with request detection and response helpers
 - **Testing Utilities** -- HTTP test client, WebSocket helpers, assertions
-- **High-performance I/O** -- epoll, kqueue, and io_uring backends
+- **High-performance I/O** -- native thread pool with platform-optimized backends via libhv
 
 ## Quick Start
 
@@ -45,6 +50,26 @@ pub fn main() !void {
     std.log.info("Listening on http://127.0.0.1:4000", .{});
     try server.listen(std.io.defaultIo());
 }
+```
+
+## Installation
+
+Add zzz as a dependency in your `build.zig.zon`:
+
+```zon
+.dependencies = .{
+    .zzz = .{
+        .url = "https://github.com/seemsindie/zzz.zig/archive/<commit>.tar.gz",
+        .hash = "<hash>",
+    },
+},
+```
+
+Then in your `build.zig`:
+
+```zig
+const zzz_dep = b.dependency("zzz", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("zzz", zzz_dep.module("zzz"));
 ```
 
 ## Middleware
@@ -141,6 +166,21 @@ zig build run    # Run the server
 zig build -Dtls=true
 ```
 
+## Documentation
+
+Full documentation available at [docs.zzz.seemsindie.com](https://docs.zzz.seemsindie.com).
+
+## Ecosystem
+
+| Package | Description |
+|---------|-------------|
+| [zzz.zig](https://github.com/seemsindie/zzz.zig) | Core web framework |
+| [zzz_db](https://github.com/seemsindie/zzz_db) | Database ORM (SQLite + PostgreSQL) |
+| [zzz_jobs](https://github.com/seemsindie/zzz_jobs) | Background job processing |
+| [zzz_mailer](https://github.com/seemsindie/zzz_mailer) | Email sending |
+| [zzz_template](https://github.com/seemsindie/zzz_template) | Template engine |
+| [zzz_cli](https://github.com/seemsindie/zzz_cli) | CLI tooling |
+
 ## Requirements
 
 - Zig 0.16.0-dev.2535+b5bd49460 or later
@@ -149,4 +189,4 @@ zig build -Dtls=true
 
 ## License
 
-MIT License - Copyright (c) 2026 Ivan Stamenkovic
+MIT License -- Copyright (c) 2026 Ivan Stamenkovic
