@@ -1,8 +1,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const builtin = @import("builtin");
-const c = std.c;
-const stdlib = @cImport(@cInclude("stdlib.h"));
+const c_api = @cImport({
+    @cInclude("stdlib.h");
+    @cInclude("sys/stat.h");
+    @cInclude("fcntl.h");
+    @cInclude("unistd.h");
+});
 
 /// Environment variable loader with .env file support.
 ///
@@ -166,30 +170,27 @@ pub const Env = struct {
         self.parseContent(content);
     }
 
-    /// Read entire file contents using C APIs (no std.fs / Io required).
+    /// Read entire file contents using C APIs, capped at 1MB.
     fn readFileContents(allocator: Allocator, path: []const u8) ?[]u8 {
-        // Create null-terminated path
         const path_z = allocator.allocSentinel(u8, path.len, 0) catch return null;
         defer allocator.free(path_z);
         @memcpy(path_z, path);
 
-        const fd = c.open(path_z.ptr, .{}, @as(c.mode_t, 0));
+        const fd = c_api.open(path_z.ptr, c_api.O_RDONLY);
         if (fd < 0) return null;
-        defer _ = c.close(fd);
+        defer _ = c_api.close(fd);
 
-        // Get file size
-        var stat_buf: c.Stat = undefined;
-        if (c.fstat(fd, &stat_buf) != 0) return null;
-        const size: usize = @intCast(stat_buf.size);
+        var stat_buf: c_api.struct_stat = undefined;
+        if (c_api.fstat(fd, &stat_buf) != 0) return null;
+        const size: usize = @intCast(stat_buf.st_size);
 
         if (size == 0) return null;
-        // Cap at 1MB
         if (size > 1024 * 1024) return null;
 
         const buf = allocator.alloc(u8, size) catch return null;
         var total: usize = 0;
         while (total < size) {
-            const n = c.read(fd, buf[total..].ptr, buf.len - total);
+            const n = c_api.read(fd, buf[total..].ptr, buf.len - total);
             if (n <= 0) break;
             total += @intCast(n);
         }
@@ -308,7 +309,7 @@ pub const Env = struct {
             defer self.allocator.free(key_z);
             @memcpy(key_z, entry.key);
 
-            const sys_val: ?[*:0]const u8 = stdlib.getenv(key_z.ptr);
+            const sys_val: ?[*:0]const u8 = c_api.getenv(key_z.ptr);
             if (sys_val) |val_ptr| {
                 const val_slice = std.mem.span(val_ptr);
                 const val_owned = self.allocator.dupe(u8, val_slice) catch continue;
