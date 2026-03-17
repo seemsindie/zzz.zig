@@ -175,29 +175,24 @@ pub const Env = struct {
         defer _ = std.c.close(fd);
 
         const max_size = 1024 * 1024;
-        var list = std.ArrayList(u8).init(allocator);
-        errdefer list.deinit();
+        var list: std.ArrayList(u8) = .empty;
+        defer list.deinit(allocator);
 
         var chunk: [4096]u8 = undefined;
         while (true) {
             const n = std.c.read(fd, &chunk, chunk.len);
             if (n <= 0) break;
             if (list.items.len + @as(usize, @intCast(n)) > max_size) {
-                list.deinit();
                 return null;
             }
-            list.appendSlice(chunk[0..@intCast(n)]) catch {
-                list.deinit();
-                return null;
-            };
+            list.appendSlice(allocator, chunk[0..@intCast(n)]) catch return null;
         }
 
         if (list.items.len == 0) {
-            list.deinit();
             return null;
         }
 
-        return list.toOwnedSlice() catch null;
+        return list.toOwnedSlice(allocator) catch null;
     }
 
     /// Parse .env file content and add entries.
