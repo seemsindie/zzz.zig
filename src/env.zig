@@ -164,7 +164,7 @@ pub const Env = struct {
         self.parseContent(content);
     }
 
-    /// Read entire file contents using POSIX APIs, capped at 1MB.
+    /// Read entire file contents, capped at 1MB.
     fn readFileContents(allocator: Allocator, path: []const u8) ?[]u8 {
         const path_z = allocator.allocSentinel(u8, path.len, 0) catch return null;
         defer allocator.free(path_z);
@@ -174,27 +174,30 @@ pub const Env = struct {
         if (fd < 0) return null;
         defer _ = std.c.close(fd);
 
-        var stat_buf: std.c.Stat = undefined;
-        if (std.c.fstat(fd, &stat_buf) != 0) return null;
-        const size: usize = @intCast(stat_buf.size);
+        const max_size = 1024 * 1024;
+        var list = std.ArrayList(u8).init(allocator);
+        errdefer list.deinit();
 
-        if (size == 0) return null;
-        if (size > 1024 * 1024) return null;
-
-        const buf = allocator.alloc(u8, size) catch return null;
-        var total: usize = 0;
-        while (total < size) {
-            const n = std.c.read(fd, buf[total..].ptr, buf.len - total);
+        var chunk: [4096]u8 = undefined;
+        while (true) {
+            const n = std.c.read(fd, &chunk, chunk.len);
             if (n <= 0) break;
-            total += @intCast(n);
+            if (list.items.len + @as(usize, @intCast(n)) > max_size) {
+                list.deinit();
+                return null;
+            }
+            list.appendSlice(chunk[0..@intCast(n)]) catch {
+                list.deinit();
+                return null;
+            };
         }
 
-        if (total != size) {
-            allocator.free(buf);
+        if (list.items.len == 0) {
+            list.deinit();
             return null;
         }
 
-        return buf;
+        return list.toOwnedSlice() catch null;
     }
 
     /// Parse .env file content and add entries.
