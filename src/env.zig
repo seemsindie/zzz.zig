@@ -1,12 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const builtin = @import("builtin");
-const c_api = @cImport({
-    @cInclude("stdlib.h");
-    @cInclude("sys/stat.h");
-    @cInclude("fcntl.h");
-    @cInclude("unistd.h");
-});
 
 /// Environment variable loader with .env file support.
 ///
@@ -170,19 +164,19 @@ pub const Env = struct {
         self.parseContent(content);
     }
 
-    /// Read entire file contents using C APIs, capped at 1MB.
+    /// Read entire file contents using POSIX APIs, capped at 1MB.
     fn readFileContents(allocator: Allocator, path: []const u8) ?[]u8 {
         const path_z = allocator.allocSentinel(u8, path.len, 0) catch return null;
         defer allocator.free(path_z);
         @memcpy(path_z, path);
 
-        const fd = c_api.open(path_z.ptr, c_api.O_RDONLY);
+        const fd = std.c.open(path_z.ptr, .{ .ACCMODE = .RDONLY });
         if (fd < 0) return null;
-        defer _ = c_api.close(fd);
+        defer _ = std.c.close(fd);
 
-        var stat_buf: c_api.struct_stat = undefined;
-        if (c_api.fstat(fd, &stat_buf) != 0) return null;
-        const size: usize = @intCast(stat_buf.st_size);
+        var stat_buf: std.c.Stat = undefined;
+        if (std.c.fstat(fd, &stat_buf) != 0) return null;
+        const size: usize = @intCast(stat_buf.size);
 
         if (size == 0) return null;
         if (size > 1024 * 1024) return null;
@@ -190,7 +184,7 @@ pub const Env = struct {
         const buf = allocator.alloc(u8, size) catch return null;
         var total: usize = 0;
         while (total < size) {
-            const n = c_api.read(fd, buf[total..].ptr, buf.len - total);
+            const n = std.c.read(fd, buf[total..].ptr, buf.len - total);
             if (n <= 0) break;
             total += @intCast(n);
         }
@@ -304,15 +298,13 @@ pub const Env = struct {
     /// Override entries from system environment variables.
     fn overrideFromSystemEnv(self: *Env) void {
         for (self.entries.items) |*entry| {
-            // Null-terminate the key for C getenv
             const key_z = self.allocator.allocSentinel(u8, entry.key.len, 0) catch continue;
             defer self.allocator.free(key_z);
             @memcpy(key_z, entry.key);
 
-            const sys_val: ?[*:0]const u8 = c_api.getenv(key_z.ptr);
+            const sys_val: ?[*:0]const u8 = std.c.getenv(key_z.ptr);
             if (sys_val) |val_ptr| {
-                const val_slice = std.mem.span(val_ptr);
-                const val_owned = self.allocator.dupe(u8, val_slice) catch continue;
+                const val_owned = self.allocator.dupe(u8, std.mem.span(val_ptr)) catch continue;
                 self.allocator.free(entry.value);
                 entry.value = val_owned;
             }
