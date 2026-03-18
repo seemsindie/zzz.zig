@@ -37,8 +37,8 @@
             .hash = "zzz_template-0.2.0-beta.1-907cK-UAAQAo_RGeGebvARY0_iFlQOabZOfIvhp0CrUU",
         },
         .openssl = .{
-            .url = "git+https://github.com/seemsindie/openssl-zig#416d593a34971fdcaf4538e69d9d0973e07c1054",
-            .hash = "N-V-__8AAJtY8QHtVJXQdyYHnumZ0TMi7rkjhlZwh-DjknBr",
+            .url = "git+https://github.com/seemsindie/openssl-zig#37f77ff7c234f262ea809a19659e3754615bdeb6",
+            .hash = "openssl-3.6.0-wZcA7-dZ8QGb0NKbyZnC9vFhVgQh8Fg4kidd7uV2QTd-",
         },
     },
     // Specifies the set of files and directories that are included in this package.
