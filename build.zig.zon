@@ -38,7 +38,7 @@
         },
         .openssl = .{
             .url = "git+https://github.com/seemsindie/openssl-zig#416d593a34971fdcaf4538e69d9d0973e07c1054",
-            .hash = "openssl-3.6.0-wZcA75tY8QHtVJXQdyYHnumZ0TMi7rkjhlZwh-DjknBr",
+            .hash = "N-V-__8AAJtY8QHtVJXQdyYHnumZ0TMi7rkjhlZwh-DjknBr",
         },
     },
     // Specifies the set of files and directories that are included in this package.
