@@ -12,6 +12,7 @@ const builtin = @import("builtin");
 pub const Env = struct {
     allocator: Allocator,
     entries: std.ArrayList(Entry) = .empty,
+    use_system_env: bool = true,
 
     pub const Entry = struct {
         key: []const u8,
@@ -51,6 +52,7 @@ pub const Env = struct {
         }
 
         // Override from system env
+        self.use_system_env = options.system_env;
         if (options.system_env) {
             self.overrideFromSystemEnv();
         }
@@ -68,10 +70,22 @@ pub const Env = struct {
     }
 
     /// Get the value for a key, or null if not found.
+    /// Checks loaded entries first, then falls back to system environment
+    /// variables (if system_env was enabled at init).
     pub fn get(self: *const Env, key: []const u8) ?[]const u8 {
         for (self.entries.items) |entry| {
             if (std.mem.eql(u8, entry.key, key)) {
                 return entry.value;
+            }
+        }
+        // Fallback: check system env for keys not in .env file
+        if (self.use_system_env) {
+            const key_z = self.allocator.allocSentinel(u8, key.len, 0) catch return null;
+            defer self.allocator.free(key_z);
+            @memcpy(key_z, key);
+            const sys_val: ?[*:0]const u8 = std.c.getenv(key_z.ptr);
+            if (sys_val) |val_ptr| {
+                return std.mem.span(val_ptr);
             }
         }
         return null;
