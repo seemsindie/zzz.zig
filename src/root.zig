@@ -82,6 +82,7 @@ pub const typed = Router.typed;
 pub const WebSocket = @import("core/websocket/connection.zig").WebSocket;
 pub const WsMessage = @import("core/websocket/connection.zig").Message;
 pub const WsConfig = @import("middleware/websocket.zig").WsConfig;
+pub const wsHandler = @import("middleware/websocket.zig").wsHandler; // re-export for live-reload and user WS routes
 
 // zzz.js Client Library
 pub const zzzJs = @import("middleware/zzz_js.zig").zzzJs;
