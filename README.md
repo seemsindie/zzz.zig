@@ -172,18 +172,30 @@ Full documentation available at [docs.zzz.indielab.link](https://docs.zzz.indiel
 
 ## Ecosystem
 
+### Core
+
 | Package | Description |
 |---------|-------------|
-| [zzz.zig](https://github.com/seemsindie/zzz.zig) | Core web framework |
-| [zzz_db](https://github.com/seemsindie/zzz_db) | Database ORM (SQLite + PostgreSQL) |
-| [zzz_jobs](https://github.com/seemsindie/zzz_jobs) | Background job processing |
-| [zzz_mailer](https://github.com/seemsindie/zzz_mailer) | Email sending |
-| [zzz_template](https://github.com/seemsindie/zzz_template) | Template engine |
-| [zzz_cli](https://github.com/seemsindie/zzz_cli) | CLI tooling |
+| [zzz.zig](https://github.com/seemsindie/zzz.zig) | A performant web framework for Zig |
+| [zzz_db](https://github.com/seemsindie/zzz_db) | Database layer for Zig — schemas, queries, migrations, and connection pooling |
+| [zzz_jobs](https://github.com/seemsindie/zzz_jobs) | Reliable background jobs for Zig — queues, retries, scheduling, and priorities |
+| [zzz_mailer](https://github.com/seemsindie/zzz_mailer) | Email delivery for Zig — templates, attachments, and multi-provider support |
+| [zzz_template](https://github.com/seemsindie/zzz_template) | Compile-time template engine for Zig with type-safe bindings |
+
+### Tooling
+
+| Package | Description |
+|---------|-------------|
+| [zzz_cli](https://github.com/seemsindie/zzz_cli) | Command-line toolkit for the zzz web framework |
+| [zzz_docs](https://github.com/seemsindie/zzz_docs) | Documentation for the zzz web framework |
+| [zzz_vscode](https://github.com/seemsindie/zzz_vscode) | Visual Studio Code extension for zzz template syntax |
+| [homebrew-zzz](https://github.com/seemsindie/homebrew-zzz) | Homebrew formulae for the zzz CLI |
+| [zzz_example_app](https://github.com/seemsindie/zzz_example_app) | Reference application showcasing the zzz web framework |
+| [zzzworkspace](https://github.com/seemsindie/zzzworkspace) | Development workspace and tooling for the zzz ecosystem |
 
 ## Requirements
 
-- Zig 0.16.0-dev.2535+b5bd49460 or later
+- Zig 0.16.0-dev.2905+5d71e3051 or later
 - libc (linked automatically)
 - OpenSSL 3 (optional, for TLS)
 
