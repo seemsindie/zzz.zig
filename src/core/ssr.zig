@@ -20,7 +20,7 @@ pub const SsrPool = struct {
     config: SsrConfig,
     allocator: Allocator,
     next_worker: u8 = 0,
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.atomic.Mutex = .unlocked,
 
     const max_workers = 8;
 
@@ -49,7 +49,7 @@ pub const SsrPool = struct {
     /// Each render call is isolated (no persistent workers), which is simpler
     /// and more robust at the cost of per-request process overhead.
     pub fn render(self: *SsrPool, component: []const u8, props_json: []const u8) ![]const u8 {
-        self.mutex.lock();
+        while (!self.mutex.tryLock()) {}
         defer self.mutex.unlock();
 
         // Build the JSON request: {"component":"Name","props":{...}}

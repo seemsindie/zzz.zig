@@ -2,6 +2,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 const native_os = builtin.os.tag;
 
+fn spinLock(m: *std.atomic.Mutex) void {
+    while (!m.tryLock()) {}
+}
+
 /// Generic in-memory cache with TTL support.
 /// Fixed-size, thread-safe, open-addressing hash map.
 pub fn Cache(comptime V: type) type {
@@ -17,11 +21,11 @@ pub fn Cache(comptime V: type) type {
         };
 
         entries: [num_slots]Entry = [_]Entry{.{}} ** num_slots,
-        mutex: std.Thread.Mutex = .{},
+        mutex: std.atomic.Mutex = .unlocked,
 
         /// Look up a value by key. Returns null if missing or expired.
         pub fn get(self: *Self, key: []const u8) ?V {
-            self.mutex.lock();
+            spinLock(&self.mutex);
             defer self.mutex.unlock();
 
             const hash = std.hash.Wyhash.hash(0, key);
@@ -49,7 +53,7 @@ pub fn Cache(comptime V: type) type {
         /// Insert or update a value with a TTL in milliseconds.
         /// If ttl_ms is 0, the entry never expires.
         pub fn put(self: *Self, key: []const u8, value: V, ttl_ms: u32) void {
-            self.mutex.lock();
+            spinLock(&self.mutex);
             defer self.mutex.unlock();
 
             const hash = std.hash.Wyhash.hash(0, key);
@@ -104,7 +108,7 @@ pub fn Cache(comptime V: type) type {
 
         /// Delete a key from the cache.
         pub fn delete(self: *Self, key: []const u8) void {
-            self.mutex.lock();
+            spinLock(&self.mutex);
             defer self.mutex.unlock();
 
             const hash = std.hash.Wyhash.hash(0, key);
@@ -126,14 +130,14 @@ pub fn Cache(comptime V: type) type {
 
         /// Clear all entries.
         pub fn clear(self: *Self) void {
-            self.mutex.lock();
+            spinLock(&self.mutex);
             defer self.mutex.unlock();
             self.entries = [_]Entry{.{}} ** num_slots;
         }
 
         /// Count the number of occupied (non-expired) entries.
         pub fn count(self: *Self) usize {
-            self.mutex.lock();
+            spinLock(&self.mutex);
             defer self.mutex.unlock();
             var n: usize = 0;
             const now = getMonotonicNs();
