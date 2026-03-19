@@ -539,7 +539,7 @@ _(Moved to Phase 9: Release Preparation)_
 - [ ] Deploy docs site (GitHub Pages or similar)
 
 ### CLI Distribution
-- [x] Shell installer script (`curl -fsSL https://zzz.seemsindie.com/install.sh | sh`)
+- [x] Shell installer script (`curl -fsSL https://zzz.indielab.link/install.sh | sh`)
 - [x] GitHub Releases with prebuilt binaries (Linux x86_64, macOS arm64, macOS x86_64)
 - [x] Release CI workflow (build binaries on tag push, attach to GitHub Release)
 - [x] Homebrew tap repository (homebrew-zzz)
