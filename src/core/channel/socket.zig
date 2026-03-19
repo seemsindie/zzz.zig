@@ -13,6 +13,10 @@ pub const Socket = struct {
     active: bool = false,
     joined_topics: [max_joined]JoinedTopic = undefined,
     joined_count: usize = 0,
+    /// Token bucket for rate limiting: current number of tokens.
+    msg_tokens: u16 = 100,
+    /// Timestamp of last token refill (monotonic nanoseconds).
+    last_refill_ns: i128 = 0,
 
     const max_joined = 16;
 
@@ -60,6 +64,35 @@ pub const Socket = struct {
                 return;
             }
         }
+    }
+
+    /// Try to consume one token from the rate-limit bucket.
+    /// Returns true if the message is allowed, false if rate-limited.
+    pub fn consumeToken(self: *Socket, refill_rate: u16, max_tokens: u16) bool {
+        const now = getMonotonicNs();
+        if (self.last_refill_ns == 0) {
+            self.last_refill_ns = now;
+            self.msg_tokens = max_tokens;
+        }
+
+        // Refill tokens based on elapsed time
+        const elapsed_ns = now - self.last_refill_ns;
+        if (elapsed_ns > 0) {
+            const elapsed_s = @as(u64, @intCast(@divTrunc(elapsed_ns, std.time.ns_per_s)));
+            const refill: u64 = elapsed_s * @as(u64, refill_rate);
+            if (refill > 0) {
+                const new_tokens = @min(@as(u64, self.msg_tokens) + refill, @as(u64, max_tokens));
+                self.msg_tokens = @intCast(new_tokens);
+                self.last_refill_ns = now;
+            }
+        }
+
+        // Try to consume a token
+        if (self.msg_tokens > 0) {
+            self.msg_tokens -= 1;
+            return true;
+        }
+        return false;
     }
 
     // ── Channel messaging ──────────────────────────────────────────────
@@ -198,6 +231,20 @@ pub const SocketRegistry = struct {
         return null;
     }
 
+    /// Close all active channel sockets (sends WebSocket close frame).
+    /// Used during graceful shutdown.
+    pub fn closeAll() void {
+        spinLock(&mutex);
+        defer mutex.unlock();
+        for (&sockets) |*entry| {
+            if (entry.active) {
+                entry.socket.ws.close(1001, "server shutdown");
+                entry.active = false;
+                entry.socket.active = false;
+            }
+        }
+    }
+
     /// Reset all state (for testing).
     pub fn reset() void {
         spinLock(&mutex);
@@ -207,6 +254,22 @@ pub const SocketRegistry = struct {
         }
     }
 };
+
+fn getMonotonicNs() i128 {
+    const builtin = @import("builtin");
+    const native_os = builtin.os.tag;
+    if (native_os == .linux) {
+        const linux = std.os.linux;
+        var ts: linux.timespec = undefined;
+        _ = linux.clock_gettime(linux.CLOCK.MONOTONIC, &ts);
+        return @as(i128, ts.sec) * std.time.ns_per_s + ts.nsec;
+    } else {
+        const c = std.c;
+        var ts: c.timespec = undefined;
+        _ = c.clock_gettime(c.CLOCK.MONOTONIC, &ts);
+        return @as(i128, ts.sec) * std.time.ns_per_s + ts.nsec;
+    }
+}
 
 // ── Tests ──────────────────────────────────────────────────────────────
 

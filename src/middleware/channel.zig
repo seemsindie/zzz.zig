@@ -20,6 +20,12 @@ const Presence = @import("../core/channel/presence.zig").Presence;
 pub const ChannelConfig = struct {
     channels: []const ChannelDef,
     heartbeat_timeout_s: u32 = 60,
+    /// Maximum burst of messages before rate limiting kicks in.
+    rate_limit_msgs: u16 = 100,
+    /// Token refill rate (messages per second).
+    rate_limit_per_s: u16 = 10,
+    /// What to do when rate limited.
+    rate_limit_action: enum { drop, disconnect } = .drop,
 };
 
 /// Create a handler function that upgrades the connection and runs the channel wire protocol.
@@ -66,6 +72,19 @@ pub fn channelHandler(comptime config: ChannelConfig) HandlerFn {
             const parsed = parseChannelMessage(text) orelse return;
 
             const socket = SocketRegistry.find(ws) orelse return;
+
+            // Rate limit check (skip for heartbeats)
+            if (!std.mem.eql(u8, parsed.event, "heartbeat")) {
+                if (!socket.consumeToken(config.rate_limit_per_s, config.rate_limit_msgs)) {
+                    if (config.rate_limit_action == .disconnect) {
+                        ws.close(1008, "rate limited");
+                        return;
+                    }
+                    // Drop: send error event and skip processing
+                    socket.reply(parsed.topic, parsed.ref, "error", "{\"reason\":\"rate_limited\"}");
+                    return;
+                }
+            }
 
             // Route based on event
             if (std.mem.eql(u8, parsed.event, "heartbeat")) {
@@ -375,4 +394,49 @@ test "parseChannelMessage with empty payload" {
     try testing.expectEqualStrings("notifications", parsed.?.topic);
     try testing.expectEqualStrings("phx_join", parsed.?.event);
     try testing.expectEqualStrings("{}", parsed.?.payload);
+}
+
+const WriterVTable = @import("../core/websocket/connection.zig").WriterVTable;
+
+const MockWriter = struct {
+    buf: [4096]u8 = undefined,
+    pos: usize = 0,
+
+    pub fn writeAll(self: *MockWriter, data: []const u8) !void {
+        if (self.pos + data.len > self.buf.len) return error.NoSpaceLeft;
+        @memcpy(self.buf[self.pos..][0..data.len], data);
+        self.pos += data.len;
+    }
+
+    pub fn flush(_: *MockWriter) !void {}
+};
+
+fn makeTestWs(writer: *MockWriter) WebSocket {
+    const VTable = WriterVTable(MockWriter);
+    return .{
+        .allocator = testing.allocator,
+        .closed = false,
+        .params = .{},
+        .query = .{},
+        .assigns = .{},
+        .writer_ctx = @ptrCast(writer),
+        .write_fn = &VTable.writeAll,
+        .flush_fn = &VTable.flush,
+    };
+}
+
+test "Socket consumeToken rate limiting" {
+    var w: MockWriter = .{};
+    var ws = makeTestWs(&w);
+    var sock: Socket = .{ .ws = &ws, .active = true };
+
+    // First 100 tokens should succeed (default bucket)
+    var consumed: u32 = 0;
+    for (0..100) |_| {
+        if (sock.consumeToken(10, 100)) consumed += 1;
+    }
+    try testing.expectEqual(@as(u32, 100), consumed);
+
+    // 101st should fail (bucket empty)
+    try testing.expect(!sock.consumeToken(10, 100));
 }

@@ -72,6 +72,11 @@ pub const BasicAuthConfig = @import("middleware/auth.zig").BasicAuthConfig;
 pub const jwtAuth = @import("middleware/auth.zig").jwtAuth;
 pub const JwtConfig = @import("middleware/auth.zig").JwtConfig;
 
+// Cache
+pub const Cache = @import("core/cache.zig").Cache;
+pub const cacheMiddleware = @import("middleware/cache_middleware.zig").cacheMiddleware;
+pub const CacheConfig = @import("middleware/cache_middleware.zig").CacheConfig;
+
 // Resource Helper (re-exported from Router)
 pub const ResourceHandlers = Router.ResourceHandlers;
 
@@ -84,9 +89,18 @@ pub const WsMessage = @import("core/websocket/connection.zig").Message;
 pub const WsConfig = @import("middleware/websocket.zig").WsConfig;
 pub const wsHandler = @import("middleware/websocket.zig").wsHandler; // re-export for live-reload and user WS routes
 
+// Server-Sent Events (SSE)
+pub const SseWriter = @import("core/sse.zig").SseWriter;
+pub const sseMiddleware = @import("middleware/sse.zig").sseMiddleware;
+pub const SseConfig = @import("middleware/sse.zig").SseConfig;
+
 // zzz.js Client Library
 pub const zzzJs = @import("middleware/zzz_js.zig").zzzJs;
 pub const ZzzJsConfig = @import("middleware/zzz_js.zig").ZzzJsConfig;
+
+// SSR Bridge
+pub const SsrPool = @import("core/ssr.zig").SsrPool;
+pub const SsrConfig = @import("core/ssr.zig").SsrConfig;
 
 // WebSocket Protocol (for advanced usage)
 pub const ws_protocol = @import("core/websocket/websocket.zig");

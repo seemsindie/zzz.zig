@@ -38,6 +38,8 @@ pub const Config = struct {
     max_connections: u32 = 1024,
     max_requests_per_connection: u32 = 100,
     kernel_backlog: u31 = 128,
+    drain_timeout_ms: u32 = 30_000, // 30s
+    shutdown_hooks: [8]?*const fn () void = .{ null, null, null, null, null, null, null, null },
     tls: ?TlsConfig = null,
 };
 
@@ -168,9 +170,19 @@ pub const Server = struct {
         std.posix.sigaction(std.posix.SIG.TERM, &act, null);
     }
 
-    /// Wait for active connections to drain (up to 10 seconds).
+    /// Perform a graceful shutdown: run hooks, close channels, drain connections.
+    pub fn shutdown(self: *Server) void {
+        // Run user shutdown hooks
+        for (self.config.shutdown_hooks) |hook| {
+            if (hook) |h| h();
+        }
+        // Drain active HTTP connections
+        self.drainConnections();
+    }
+
+    /// Wait for active connections to drain (up to configured timeout).
     pub fn drainConnections(self: *Server) void {
-        const timeout_ns: i128 = 10 * std.time.ns_per_s;
+        const timeout_ns: i128 = @as(i128, self.config.drain_timeout_ms) * std.time.ns_per_ms;
         const start = getMonotonicNs();
 
         while (self.active_connections.load(.acquire) > 0) {

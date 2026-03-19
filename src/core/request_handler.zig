@@ -202,6 +202,21 @@ fn processRequest(
         }
     }
 
+    // Check for SSE takeover — Content-Type: text/event-stream
+    if (resp.headers.get("Content-Type")) |ct| {
+        if (std.mem.eql(u8, ct, "text/event-stream")) {
+            // Send the SSE headers as an HTTP response with no body
+            resp.version = req.version;
+            resp.chunked = false;
+            // Remove Content-Length for streaming
+            sendResponseWriter(writer, &resp);
+            // SSE connection established — handler was responsible for
+            // setting up its event loop via assigns or returning.
+            // For now, the handler returns and the connection closes.
+            return false; // Connection taken over
+        }
+    }
+
     // Set response version to match request
     resp.version = req.version;
 
