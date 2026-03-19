@@ -77,6 +77,13 @@ pub const Cache = @import("core/cache.zig").Cache;
 pub const cacheMiddleware = @import("middleware/cache_middleware.zig").cacheMiddleware;
 pub const CacheConfig = @import("middleware/cache_middleware.zig").CacheConfig;
 
+// Assets
+pub const assets = @import("middleware/assets.zig").assets;
+pub const assetPath = @import("middleware/assets.zig").assetPath;
+pub const AssetConfig = @import("middleware/assets.zig").AssetConfig;
+pub const AssetManifest = @import("middleware/assets.zig").AssetManifest;
+pub const getAssetManifest = @import("middleware/assets.zig").getManifest;
+
 // Resource Helper (re-exported from Router)
 pub const ResourceHandlers = Router.ResourceHandlers;
 
@@ -93,6 +100,11 @@ pub const wsHandler = @import("middleware/websocket.zig").wsHandler; // re-expor
 pub const SseWriter = @import("core/sse.zig").SseWriter;
 pub const sseMiddleware = @import("middleware/sse.zig").sseMiddleware;
 pub const SseConfig = @import("middleware/sse.zig").SseConfig;
+
+// Live Reload
+pub const liveReload = @import("middleware/live_reload.zig").liveReload;
+pub const liveReloadWs = @import("middleware/live_reload.zig").liveReloadWs;
+pub const LiveReloadConfig = @import("middleware/live_reload.zig").LiveReloadConfig;
 
 // zzz.js Client Library
 pub const zzzJs = @import("middleware/zzz_js.zig").zzzJs;
