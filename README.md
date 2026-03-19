@@ -26,6 +26,8 @@ A fast, memory-safe web framework with compile-time route resolution, a rich mid
 - **Graceful Shutdown** with configurable drain timeout and shutdown hooks
 - **Channel Rate Limiting** via token bucket (per-socket message throttling)
 - **SSR Bridge** for server-side rendering React components via Bun subprocesses
+- **Live Reload** with CSS hot-swap and automatic browser refresh via WebSocket
+- **Asset Pipeline** with Bun bundling, minification, fingerprinting, and manifest-based cache busting
 
 ## Quick Start
 
