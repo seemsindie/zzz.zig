@@ -21,6 +21,11 @@ A fast, memory-safe web framework with compile-time route resolution, a rich mid
 - **htmx Integration** with request detection and response helpers
 - **Testing Utilities** -- HTTP test client, WebSocket helpers, assertions
 - **High-performance I/O** -- native thread pool with platform-optimized backends via libhv
+- **In-Memory Cache** with TTL, response cache middleware, and `X-Cache` headers
+- **Server-Sent Events (SSE)** with `SseWriter` for real-time streaming
+- **Graceful Shutdown** with configurable drain timeout and shutdown hooks
+- **Channel Rate Limiting** via token bucket (per-socket message throttling)
+- **SSR Bridge** for server-side rendering React components via Bun subprocesses
 
 ## Quick Start
 
@@ -133,6 +138,40 @@ zzz.Router.channel("/socket", .{
         }},
     },
 });
+```
+
+## Server-Sent Events (SSE)
+
+```zig
+fn sseHandler(ctx: *zzz.Context) !void {
+    ctx.respond(.ok, "text/event-stream", "");
+    // SSE headers set automatically by sseMiddleware
+}
+
+// In routes:
+zzz.Router.scope("/events", &.{zzz.sseMiddleware(.{})}, &.{
+    zzz.Router.get("", sseHandler),
+}),
+```
+
+## Caching
+
+```zig
+const App = zzz.Router.define(.{
+    .middleware = &.{
+        zzz.cacheMiddleware(.{
+            .cacheable_prefixes = &.{"/api/"},
+            .default_ttl_s = 300,
+        }),
+        // ...other middleware
+    },
+    .routes = routes,
+});
+
+// Or use the generic cache directly:
+var cache: zzz.Cache([]const u8) = .{};
+cache.put("key", "value", 60_000); // 60s TTL
+const val = cache.get("key");
 ```
 
 ## OpenAPI / Swagger

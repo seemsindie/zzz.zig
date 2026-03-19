@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-03-19
+
+### Added
+- In-memory cache (`Cache(V)`) with TTL support and thread-safe fixed-size hash map
+- Response cache middleware with `X-Cache: HIT/MISS` headers and configurable path prefixes
+- Server-Sent Events (SSE) support with `SseWriter` and SSE middleware
+- SSR subprocess pool for server-side rendering via Bun (`SsrPool`)
+- Graceful shutdown with configurable `drain_timeout_ms` and up to 8 shutdown hooks
+- `SocketRegistry.closeAll()` for channel cleanup during shutdown
+- Channel rate limiting with token bucket algorithm (`rate_limit_msgs`, `rate_limit_per_s`, `rate_limit_action`)
+
 ## [0.1.0] - 2026-02-16
 
 ### Added
