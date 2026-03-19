@@ -1,64 +1,109 @@
 # Contributing to zzz
 
-Thanks for your interest in contributing! This guide covers the basics.
+## Setup
 
-## Getting Started
+zzz.zig lives inside a workspace with its sibling packages (`zzz_db`, `zzz_jobs`, `zzz_mailer`, `zzz_template`, `zzz_example_app`, `zzz_website`). Clone the whole workspace, not just this repo:
 
-1. Fork the repository
-2. Clone your fork alongside the workspace dependencies:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/zzz.git
-   cd zzz
-   ```
-3. Build and run tests:
-   ```bash
-   zig build
-   zig build test
-   ```
+```bash
+git clone https://github.com/zzz-web/zigweb_workspace.git
+cd zigweb_workspace
+./setup          # clones all packages, pins correct commits
+```
 
-## Requirements
+Dependencies (SQLite, OpenSSL, libpq) are vendored — no system libraries needed.
 
-- Zig 0.16.0-dev.2535+b5bd49460 or later
-- SQLite3 (for zzz_db tests)
-- OpenSSL 3 (optional, for TLS features)
+**Requirements:** Zig 0.16.0-dev.2535+b5bd49460 or later.
 
-## Development Workflow
+## Development
 
-1. Create a feature branch from `main`
-2. Make your changes
-3. Ensure all tests pass: `zig build test`
-4. Submit a pull request
+### Where things live
 
-## Code Style
+| What | Where |
+|---|---|
+| Core types (Server, Request, Response, Router) | `src/core/` |
+| Middleware (compression, CORS, caching, etc.) | `src/middleware/` |
+| Public API surface | `src/root.zig` (re-exports from core/middleware) |
+| Tests | Inline, at the bottom of each module |
 
-- Follow the existing code patterns in the codebase
-- Use `snake_case` for variables and functions
-- Use `PascalCase` for types and comptime-known values
-- Keep lines under 120 characters where practical
-- Add tests for new functionality
-- Use `std.log` for logging, not `std.debug.print`
+### Adding something new
 
-## Commit Messages
+- **New core type** -- add a file in `src/core/`, export it from `src/root.zig`.
+- **New middleware** -- add a file in `src/middleware/`, export it from `src/root.zig`.
+- Everything users import comes through `root.zig`. If it's not exported there, it doesn't exist to consumers.
 
-- Use imperative mood ("Add feature" not "Added feature")
-- Keep the first line under 72 characters
-- Reference issues where relevant
+## Code Patterns
+
+These are zzz-specific conventions. Follow them in new code.
+
+### Fixed-size data structures
+
+No heap allocations on hot paths. Use fixed-capacity buffers, ring buffers, and bounded queues. The allocator is for setup; the request loop should be allocation-free.
+
+### Thread safety
+
+Use `std.atomic.Mutex` with `spinLock()` — not `std.Thread.Mutex`. The spin lock is appropriate for the short critical sections in zzz's I/O paths.
+
+### Type-erased callbacks
+
+Pass behavior through function pointers with an erased `*anyopaque` context. See the WebSocket and SSE handler patterns for examples.
+
+### Comptime config structs
+
+Middleware is configured via comptime structs (`ChannelConfig`, `CacheConfig`, etc.). The struct fields become comptime-known, so the compiler eliminates dead branches. New middleware should follow this pattern.
+
+### Syscalls
+
+Use `std.c` for syscalls, not `std.posix`. The `std.posix` namespace has macOS compatibility issues that `std.c` avoids.
 
 ## Testing
 
-Every module has inline tests. Run the full test suite with:
+Every module has inline tests at the bottom of the file. Run them:
 
 ```bash
-cd zzz && zig build test      # 281 tests
-cd zzz_db && zig build test   # SQLite tests
-cd zzz_jobs && zig build test # Job processing tests
+cd zzz.zig && zig build test   # ~281 tests
 ```
+
+To run sibling package tests from the workspace root:
+
+```bash
+cd zzz_db && zig build test    # SQLite tests
+cd zzz_jobs && zig build test  # Job processing tests
+```
+
+Write tests for all new functionality. Tests go in the same file as the code they test, inside a `test` block at the bottom.
+
+## Code Style
+
+- `snake_case` for variables and functions
+- `PascalCase` for types and comptime-known values
+- Lines under 120 characters where practical
+- `std.log` for logging, never `std.debug.print`
+- No unnecessary abstractions -- keep it direct
+- Match the style of surrounding code
+
+## Commit Messages
+
+- Imperative mood: "Add feature" not "Added feature"
+- First line under 72 characters
+- Reference issues where relevant
+- One logical change per commit
+
+## After Your Change
+
+Checklist before submitting:
+
+- [ ] New public types are exported from `src/root.zig`
+- [ ] Added usage example in `zzz_example_app` if applicable
+- [ ] Updated `README.md` and `CHANGELOG.md`
+- [ ] All tests pass: `zig build test`
+- [ ] Push, then propagate hashes to downstream packages with `zpush`
+
+See the workspace-level `CONTRIBUTING.md` in `zigweb_workspace/` for the full cross-package lifecycle.
 
 ## Pull Requests
 
 - Keep PRs focused on a single change
 - Include tests for new functionality
-- Update documentation if needed
 - Ensure CI passes
 
 ## Reporting Bugs

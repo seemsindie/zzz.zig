@@ -17,6 +17,11 @@ pub const applyMask = @import("frame.zig").applyMask;
 pub const computeAcceptKey = @import("handshake.zig").computeAcceptKey;
 pub const validateUpgradeRequest = @import("handshake.zig").validateUpgradeRequest;
 pub const buildUpgradeResponse = @import("handshake.zig").buildUpgradeResponse;
+pub const UpgradeResult = @import("handshake.zig").UpgradeResult;
+
+pub const deflate = @import("deflate.zig");
+pub const compressPayload = deflate.compressPayload;
+pub const decompressPayload = deflate.decompressPayload;
 
 test {
     const std = @import("std");

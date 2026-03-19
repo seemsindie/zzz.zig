@@ -15,6 +15,7 @@ pub const Opcode = enum(u4) {
 /// A decoded WebSocket frame.
 pub const Frame = struct {
     fin: bool,
+    rsv1: bool = false,
     opcode: Opcode,
     payload: []const u8,
     close_code: ?u16 = null,
@@ -34,6 +35,7 @@ pub fn readFrame(allocator: Allocator, reader: anytype) !Frame {
     const byte1 = try reader.takeByte();
 
     const fin = (byte0 & 0x80) != 0;
+    const rsv1 = (byte0 & 0x40) != 0;
     const opcode: Opcode = @enumFromInt(@as(u4, @truncate(byte0 & 0x0F)));
     const masked = (byte1 & 0x80) != 0;
     const len7: u7 = @truncate(byte1 & 0x7F);
@@ -79,6 +81,7 @@ pub fn readFrame(allocator: Allocator, reader: anytype) !Frame {
 
     return .{
         .fin = fin,
+        .rsv1 = rsv1,
         .opcode = opcode,
         .payload = payload,
         .close_code = close_code,
@@ -89,6 +92,37 @@ pub fn readFrame(allocator: Allocator, reader: anytype) !Frame {
 pub fn writeFrame(writer: anytype, opcode: Opcode, payload: []const u8, fin: bool) !void {
     // First byte: FIN + opcode
     const byte0: u8 = (if (fin) @as(u8, 0x80) else @as(u8, 0x00)) | @as(u8, @intFromEnum(opcode));
+    try writer.writeAll(&.{byte0});
+
+    // Second byte: length (server frames are unmasked)
+    if (payload.len < 126) {
+        try writer.writeAll(&.{@intCast(payload.len)});
+    } else if (payload.len <= 0xFFFF) {
+        try writer.writeAll(&.{126});
+        var len_buf: [2]u8 = undefined;
+        std.mem.writeInt(u16, &len_buf, @intCast(payload.len), .big);
+        try writer.writeAll(&len_buf);
+    } else {
+        try writer.writeAll(&.{127});
+        var len_buf: [8]u8 = undefined;
+        std.mem.writeInt(u64, &len_buf, @intCast(payload.len), .big);
+        try writer.writeAll(&len_buf);
+    }
+
+    // Payload
+    if (payload.len > 0) {
+        try writer.writeAll(payload);
+    }
+
+    try writer.flush();
+}
+
+/// Write an unmasked server frame with RSV1 control (for permessage-deflate).
+pub fn writeFrameEx(writer: anytype, opcode: Opcode, payload: []const u8, fin: bool, rsv1: bool) !void {
+    // First byte: FIN + RSV1 + opcode
+    const byte0: u8 = (if (fin) @as(u8, 0x80) else @as(u8, 0x00)) |
+        (if (rsv1) @as(u8, 0x40) else @as(u8, 0x00)) |
+        @as(u8, @intFromEnum(opcode));
     try writer.writeAll(&.{byte0});
 
     // Second byte: length (server frames are unmasked)
@@ -280,6 +314,44 @@ test "ping frame round-trip" {
 
     try testing.expectEqual(Opcode.ping, frame.opcode);
     try testing.expectEqualStrings("ping!", frame.payload);
+}
+
+test "writeFrameEx with RSV1 and readFrame round-trip" {
+    var writer: MockWriter = .{};
+    try writeFrameEx(&writer, .text, "compressed", true, true);
+
+    var reader: MockReader = .{ .data = writer.written() };
+    const frame = try readFrame(testing.allocator, &reader);
+    defer testing.allocator.free(@constCast(frame.payload));
+
+    try testing.expect(frame.fin);
+    try testing.expect(frame.rsv1);
+    try testing.expectEqual(Opcode.text, frame.opcode);
+    try testing.expectEqualStrings("compressed", frame.payload);
+}
+
+test "writeFrameEx without RSV1" {
+    var writer: MockWriter = .{};
+    try writeFrameEx(&writer, .text, "plain", true, false);
+
+    var reader: MockReader = .{ .data = writer.written() };
+    const frame = try readFrame(testing.allocator, &reader);
+    defer testing.allocator.free(@constCast(frame.payload));
+
+    try testing.expect(frame.fin);
+    try testing.expect(!frame.rsv1);
+    try testing.expectEqualStrings("plain", frame.payload);
+}
+
+test "readFrame RSV1 is false for normal writeFrame" {
+    var writer: MockWriter = .{};
+    try writeFrame(&writer, .text, "Hello", true);
+
+    var reader: MockReader = .{ .data = writer.written() };
+    const frame = try readFrame(testing.allocator, &reader);
+    defer testing.allocator.free(@constCast(frame.payload));
+
+    try testing.expect(!frame.rsv1);
 }
 
 test "non-FIN frame" {

@@ -37,10 +37,23 @@ pub fn validateUpgradeRequest(request: *const Request) !void {
     if (!std.mem.eql(u8, version, "13")) return error.UnsupportedWebSocketVersion;
 }
 
+/// Result of building the upgrade response, includes negotiated extensions.
+pub const UpgradeResult = struct {
+    response_bytes: []u8,
+    deflate: bool,
+};
+
 /// Build the raw HTTP/1.1 101 Switching Protocols response bytes.
-pub fn buildUpgradeResponse(allocator: Allocator, request: *const Request) ![]u8 {
+/// Negotiates permessage-deflate if the client advertises it.
+pub fn buildUpgradeResponse(allocator: Allocator, request: *const Request) !UpgradeResult {
     const key = request.header("Sec-WebSocket-Key") orelse return error.MissingWebSocketKey;
     const accept_key = computeAcceptKey(key);
+
+    // Check for permessage-deflate extension
+    const deflate = if (request.header("Sec-WebSocket-Extensions")) |ext|
+        containsIgnoreCase(ext, "permessage-deflate")
+    else
+        false;
 
     var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(allocator);
@@ -51,10 +64,16 @@ pub fn buildUpgradeResponse(allocator: Allocator, request: *const Request) ![]u8
     try buf.appendSlice(allocator, "Sec-WebSocket-Accept: ");
     try buf.appendSlice(allocator, &accept_key);
     try buf.appendSlice(allocator, "\r\n");
+    if (deflate) {
+        try buf.appendSlice(allocator, "Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover\r\n");
+    }
     try buf.appendSlice(allocator, "Server: Zzz/0.1.0\r\n");
     try buf.appendSlice(allocator, "\r\n");
 
-    return buf.toOwnedSlice(allocator);
+    return .{
+        .response_bytes = try buf.toOwnedSlice(allocator),
+        .deflate = deflate,
+    };
 }
 
 fn containsIgnoreCase(haystack: []const u8, needle: []const u8) bool {
@@ -129,12 +148,32 @@ test "buildUpgradeResponse produces valid HTTP response" {
     try req.headers.append(testing.allocator, "Sec-WebSocket-Version", "13");
     defer req.deinit(testing.allocator);
 
-    const response = try buildUpgradeResponse(testing.allocator, &req);
-    defer testing.allocator.free(response);
+    const result = try buildUpgradeResponse(testing.allocator, &req);
+    defer testing.allocator.free(result.response_bytes);
 
+    const response = result.response_bytes;
     try testing.expect(std.mem.indexOf(u8, response, "HTTP/1.1 101 Switching Protocols\r\n") != null);
     try testing.expect(std.mem.indexOf(u8, response, "Upgrade: websocket\r\n") != null);
     try testing.expect(std.mem.indexOf(u8, response, "Connection: Upgrade\r\n") != null);
     try testing.expect(std.mem.indexOf(u8, response, "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n") != null);
     try testing.expect(std.mem.endsWith(u8, response, "\r\n\r\n"));
+    try testing.expect(!result.deflate);
+}
+
+test "buildUpgradeResponse negotiates permessage-deflate" {
+    var req: Request = .{ .method = .GET, .path = "/ws" };
+    try req.headers.append(testing.allocator, "Upgrade", "websocket");
+    try req.headers.append(testing.allocator, "Connection", "Upgrade");
+    try req.headers.append(testing.allocator, "Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==");
+    try req.headers.append(testing.allocator, "Sec-WebSocket-Version", "13");
+    try req.headers.append(testing.allocator, "Sec-WebSocket-Extensions", "permessage-deflate; client_max_window_bits");
+    defer req.deinit(testing.allocator);
+
+    const result = try buildUpgradeResponse(testing.allocator, &req);
+    defer testing.allocator.free(result.response_bytes);
+
+    try testing.expect(result.deflate);
+    try testing.expect(std.mem.indexOf(u8, result.response_bytes, "Sec-WebSocket-Extensions: permessage-deflate") != null);
+    try testing.expect(std.mem.indexOf(u8, result.response_bytes, "server_no_context_takeover") != null);
+    try testing.expect(std.mem.indexOf(u8, result.response_bytes, "client_no_context_takeover") != null);
 }

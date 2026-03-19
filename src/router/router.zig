@@ -72,15 +72,31 @@ pub const RouteDef = struct {
 
     /// Attach API documentation to this route for OpenAPI spec generation.
     /// Only routes with `.doc()` will appear in the generated Swagger spec.
-    /// Usage: `Router.get("/api/status", handler).doc(.{ .summary = "Health check", .tag = "System" })`
+    ///
+    /// When used with `Router.typed()`, auto-detected request/response types are
+    /// preserved unless explicitly overridden in the provided `ApiDoc`.
+    /// Usage: `Router.typed(.POST, "/users", handler).doc(.{ .summary = "Create user", .tag = "Users" })`
     pub fn doc(self: RouteDef, comptime api_doc: ApiDoc) RouteDef {
+        // Merge: preserve auto-detected types from typed() unless overridden
+        const merged = comptime blk: {
+            var result = api_doc;
+            if (self.api_doc) |existing| {
+                if (result.request_body == null and existing.request_body != null) {
+                    result.request_body = existing.request_body;
+                }
+                if (result.response_body == null and existing.response_body != null) {
+                    result.response_body = existing.response_body;
+                }
+            }
+            break :blk result;
+        };
         return .{
             .method = self.method,
             .pattern = self.pattern,
             .handler = self.handler,
             .middleware = self.middleware,
             .name = self.name,
-            .api_doc = api_doc,
+            .api_doc = merged,
         };
     }
 };
@@ -188,6 +204,35 @@ pub const Router = struct {
     /// Route with an arbitrary method.
     pub fn route(comptime method: Method, comptime pattern: []const u8, comptime handler: HandlerFn) RouteDef {
         return .{ .method = method, .pattern = pattern, .handler = handler };
+    }
+
+    /// Route with auto-detected request/response types for Swagger documentation.
+    ///
+    /// Accepts richer handler signatures beyond the standard `HandlerFn`:
+    /// - `fn(*Context) !void`           — passthrough (standard HandlerFn)
+    /// - `fn(*Context) !ResponseType`   — auto-detect response body
+    /// - `fn(*Context, RequestType) !void` — auto-detect request body (JSON parsed)
+    /// - `fn(*Context, RequestType) !ResponseType` — auto-detect both
+    ///
+    /// The generated wrapper handles JSON parsing of the request body and JSON
+    /// serialization of the response. ApiDoc types are set automatically.
+    ///
+    /// Usage:
+    /// ```
+    /// fn createUser(ctx: *zzz.Context, body: CreateUserRequest) !UserResponse {
+    ///     _ = ctx;
+    ///     return .{ .id = 1, .name = body.name };
+    /// }
+    /// Router.typed(.POST, "/api/users", createUser).doc(.{ .summary = "Create user", .tag = "Users" })
+    /// ```
+    pub fn typed(comptime method: Method, comptime pattern: []const u8, comptime handler: anytype) RouteDef {
+        const info = analyzeTypedHandler(handler);
+        return .{
+            .method = method,
+            .pattern = pattern,
+            .handler = info.handler_fn,
+            .api_doc = info.api_doc,
+        };
     }
 
     /// Define a WebSocket route. Generates a GET handler that upgrades to WebSocket.
@@ -359,9 +404,163 @@ pub const Router = struct {
 
                 return buf[0..pos];
             }
+
+            /// Look up a named route at runtime and substitute params to build a URL.
+            /// Unlike `buildPath`, this accepts runtime route names via `std.mem.eql`.
+            /// Returns an allocator-owned string, or `null` if the route is not found
+            /// or a required parameter is missing.
+            pub fn urlFor(allocator: Allocator, route_name: []const u8, params: *const Params) ?[]const u8 {
+                inline for (config.routes) |r| {
+                    if (r.name.len > 0 and std.mem.eql(u8, r.name, route_name)) {
+                        return substitutePattern(allocator, r.pattern, params);
+                    }
+                }
+                return null;
+            }
+
+            fn substitutePattern(allocator: Allocator, comptime pattern: []const u8, params: *const Params) ?[]const u8 {
+                const segments = comptime route_mod.compilePattern(pattern);
+
+                if (segments.len == 0) {
+                    return allocator.dupe(u8, "/") catch return null;
+                }
+
+                var buf: [512]u8 = undefined;
+                var pos: usize = 0;
+
+                inline for (segments) |seg| {
+                    switch (seg) {
+                        .static => |lit| {
+                            if (pos + 1 + lit.len > buf.len) return null;
+                            buf[pos] = '/';
+                            pos += 1;
+                            @memcpy(buf[pos..][0..lit.len], lit);
+                            pos += lit.len;
+                        },
+                        .param => |name| {
+                            const value = params.get(name) orelse return null;
+                            if (pos + 1 + value.len > buf.len) return null;
+                            buf[pos] = '/';
+                            pos += 1;
+                            @memcpy(buf[pos..][0..value.len], value);
+                            pos += value.len;
+                        },
+                        .wildcard => |name| {
+                            const value = params.get(name) orelse return null;
+                            if (pos + 1 + value.len > buf.len) return null;
+                            buf[pos] = '/';
+                            pos += 1;
+                            @memcpy(buf[pos..][0..value.len], value);
+                            pos += value.len;
+                        },
+                    }
+                }
+
+                return allocator.dupe(u8, buf[0..pos]) catch return null;
+            }
         };
     }
 };
+
+/// Analyze a typed handler function and generate a wrapper HandlerFn + ApiDoc.
+///
+/// Inspects the handler's parameter and return types at comptime to:
+/// 1. Auto-detect request body type (second parameter, JSON-parsed)
+/// 2. Auto-detect response body type (non-void return, JSON-serialized)
+/// 3. Generate a wrapper that conforms to the standard `HandlerFn` signature
+fn analyzeTypedHandler(comptime handler: anytype) struct { handler_fn: HandlerFn, api_doc: ?ApiDoc } {
+    const H = @TypeOf(handler);
+
+    // If already a standard HandlerFn, passthrough
+    if (H == HandlerFn) {
+        return .{ .handler_fn = handler, .api_doc = null };
+    }
+
+    const fn_info = @typeInfo(H).@"fn";
+    const params = fn_info.params;
+    const return_type = fn_info.return_type.?;
+
+    // Validate: first param must be *Context
+    if (params.len == 0) {
+        @compileError("typed handler must accept *Context as first parameter");
+    }
+    if (params[0].type != *Context) {
+        @compileError("typed handler first parameter must be *Context, got " ++ @typeName(params[0].type.?));
+    }
+    if (params.len > 2) {
+        @compileError("typed handler accepts at most 2 parameters (*Context and optional RequestType)");
+    }
+
+    // Unwrap error union to get payload type
+    const return_payload = comptime blk: {
+        if (@typeInfo(return_type) == .error_union) {
+            break :blk @typeInfo(return_type).error_union.payload;
+        }
+        break :blk return_type;
+    };
+
+    const has_request_type = params.len == 2;
+    const RequestType = if (has_request_type) params[1].type.? else void;
+    const has_response_type = return_payload != void;
+    const ResponseType = if (has_response_type) return_payload else void;
+
+    // Build ApiDoc with auto-detected types
+    const api_doc: ?ApiDoc = if (has_request_type or has_response_type) ApiDoc{
+        .request_body = if (has_request_type) RequestType else null,
+        .response_body = if (has_response_type) ResponseType else null,
+    } else null;
+
+    // If the handler is already a standard signature, no wrapper needed
+    if (!has_request_type and !has_response_type) {
+        return .{
+            .handler_fn = @ptrCast(&handler),
+            .api_doc = api_doc,
+        };
+    }
+
+    // Generate wrapper
+    const S = struct {
+        fn handle(ctx: *Context) anyerror!void {
+            if (has_request_type) {
+                const body_bytes = ctx.request.body orelse {
+                    ctx.respond(.bad_request, "application/json; charset=utf-8", "{\"error\":\"request body required\"}");
+                    return;
+                };
+                const parsed = std.json.parseFromSlice(RequestType, ctx.allocator, body_bytes, .{}) catch {
+                    ctx.respond(.bad_request, "application/json; charset=utf-8", "{\"error\":\"invalid request body\"}");
+                    return;
+                };
+                defer parsed.deinit();
+
+                if (has_response_type) {
+                    const result: ResponseType = try handler(ctx, parsed.value);
+                    const json_bytes = std.json.Stringify.valueAlloc(ctx.allocator, result, .{}) catch {
+                        ctx.respond(.internal_server_error, "application/json; charset=utf-8", "{\"error\":\"serialization failed\"}");
+                        return;
+                    };
+                    ctx.json(.ok, json_bytes);
+                    ctx.response.body_owned = true;
+                } else {
+                    try handler(ctx, parsed.value);
+                }
+            } else {
+                // No request type, but has response type
+                const result: ResponseType = try handler(ctx);
+                const json_bytes = std.json.Stringify.valueAlloc(ctx.allocator, result, .{}) catch {
+                    ctx.respond(.internal_server_error, "application/json; charset=utf-8", "{\"error\":\"serialization failed\"}");
+                    return;
+                };
+                ctx.json(.ok, json_bytes);
+                ctx.response.body_owned = true;
+            }
+        }
+    };
+
+    return .{
+        .handler_fn = &S.handle,
+        .api_doc = api_doc,
+    };
+}
 
 /// Generate a comptime chain of pipeline functions and return the entry point.
 fn makePipelineEntry(comptime pipeline: []const HandlerFn) *const fn (*Context) anyerror!void {
@@ -839,4 +1038,224 @@ test "Router.scope preserves route names" {
     var buf: [128]u8 = undefined;
     const path = App.buildPath("api_user", &buf, .{ .id = "99" });
     try std.testing.expectEqualStrings("/api/users/99", path.?);
+}
+
+// ── Typed handler tests ────────────────────────────────────────────
+
+test "Router.typed with standard HandlerFn passthrough" {
+    const H = struct {
+        fn handle(ctx: *Context) !void {
+            ctx.text(.ok, "passthrough");
+        }
+    };
+    const r = Router.typed(.GET, "/test", @as(HandlerFn, &H.handle));
+    try std.testing.expectEqual(Method.GET, r.method);
+    try std.testing.expectEqualStrings("/test", r.pattern);
+    try std.testing.expect(r.api_doc == null);
+}
+
+test "Router.typed auto-detects response body type" {
+    const TestResponse = struct {
+        message: []const u8,
+        code: u32,
+    };
+    const H = struct {
+        fn handle(_: *Context) !TestResponse {
+            return .{ .message = "ok", .code = 200 };
+        }
+    };
+    const r = Router.typed(.GET, "/status", H.handle);
+    try std.testing.expectEqual(Method.GET, r.method);
+    try std.testing.expect(r.api_doc != null);
+    const doc_val = r.api_doc.?;
+    try std.testing.expect(doc_val.request_body == null);
+    try std.testing.expect(doc_val.response_body == TestResponse);
+}
+
+test "Router.typed auto-detects both request and response types" {
+    const CreateRequest = struct {
+        name: []const u8,
+        email: []const u8,
+    };
+    const CreateResponse = struct {
+        id: u32,
+        name: []const u8,
+    };
+    const H = struct {
+        fn handle(_: *Context, _: CreateRequest) !CreateResponse {
+            return .{ .id = 1, .name = "test" };
+        }
+    };
+    const r = Router.typed(.POST, "/users", H.handle);
+    try std.testing.expectEqual(Method.POST, r.method);
+    try std.testing.expect(r.api_doc != null);
+    const doc_val = r.api_doc.?;
+    try std.testing.expect(doc_val.request_body == CreateRequest);
+    try std.testing.expect(doc_val.response_body == CreateResponse);
+}
+
+test "Router.typed auto-detects request body only" {
+    const UpdateRequest = struct {
+        name: []const u8,
+    };
+    const H = struct {
+        fn handle(_: *Context, _: UpdateRequest) !void {}
+    };
+    const r = Router.typed(.PUT, "/users/:id", H.handle);
+    try std.testing.expect(r.api_doc != null);
+    const doc_val = r.api_doc.?;
+    try std.testing.expect(doc_val.request_body == UpdateRequest);
+    try std.testing.expect(doc_val.response_body == null);
+}
+
+test "RouteDef.doc merge preserves auto-detected types" {
+    const Req = struct { name: []const u8 };
+    const Resp = struct { id: u32 };
+    const H = struct {
+        fn handle(_: *Context, _: Req) !Resp {
+            return .{ .id = 1 };
+        }
+    };
+    const r = Router.typed(.POST, "/users", H.handle).doc(.{
+        .summary = "Create user",
+        .tag = "Users",
+    });
+    try std.testing.expect(r.api_doc != null);
+    const doc_val = r.api_doc.?;
+    // Auto-detected types preserved through merge
+    try std.testing.expect(doc_val.request_body == Req);
+    try std.testing.expect(doc_val.response_body == Resp);
+    // Manually provided fields applied
+    try std.testing.expectEqualStrings("Create user", doc_val.summary);
+    try std.testing.expectEqualStrings("Users", doc_val.tag);
+}
+
+test "RouteDef.doc explicit types override auto-detected" {
+    const OrigResp = struct { id: u32 };
+    const OverrideResp = struct { id: u32, extra: []const u8 };
+    const H = struct {
+        fn handle(_: *Context) !OrigResp {
+            return .{ .id = 1 };
+        }
+    };
+    const r = Router.typed(.GET, "/users", H.handle).doc(.{
+        .summary = "List users",
+        .response_body = OverrideResp,
+    });
+    try std.testing.expect(r.api_doc != null);
+    const doc_val = r.api_doc.?;
+    // Explicit override wins
+    try std.testing.expect(doc_val.response_body == OverrideResp);
+}
+
+test "Router.typed response handler executes correctly" {
+    const testing_alloc = std.testing.allocator;
+    const TestResp = struct {
+        status: []const u8,
+    };
+    const H = struct {
+        fn handle(ctx: *Context) !TestResp {
+            _ = ctx;
+            return .{ .status = "ok" };
+        }
+    };
+    const App = Router.define(.{
+        .routes = &.{
+            Router.typed(.GET, "/health", H.handle),
+        },
+    });
+
+    var req: Request = .{ .method = .GET, .path = "/health" };
+    defer req.deinit(testing_alloc);
+    var resp = try App.handler(testing_alloc, &req);
+    defer resp.deinit(testing_alloc);
+    try std.testing.expectEqual(StatusCode.ok, resp.status);
+    // Body should be JSON-serialized
+    try std.testing.expect(resp.body != null);
+    const body = resp.body.?;
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"status\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"ok\"") != null);
+}
+
+test "Router.define urlFor single param" {
+    const H = struct {
+        fn handle(ctx: *Context) !void {
+            ctx.text(.ok, "ok");
+        }
+    };
+
+    const App = Router.define(.{
+        .routes = &.{
+            Router.get("/users/:id", H.handle).named("user_path"),
+            Router.get("/users/:id/posts/:post_id", H.handle).named("user_post"),
+        },
+    });
+
+    var params: Params = .{};
+    params.put("id", "42");
+
+    const url = App.urlFor(std.testing.allocator, "user_path", &params);
+    defer if (url) |u| std.testing.allocator.free(u);
+    try std.testing.expect(url != null);
+    try std.testing.expectEqualStrings("/users/42", url.?);
+}
+
+test "Router.define urlFor multi param" {
+    const H = struct {
+        fn handle(ctx: *Context) !void {
+            ctx.text(.ok, "ok");
+        }
+    };
+
+    const App = Router.define(.{
+        .routes = &.{
+            Router.get("/users/:id/posts/:post_id", H.handle).named("user_post"),
+        },
+    });
+
+    var params: Params = .{};
+    params.put("id", "7");
+    params.put("post_id", "hello");
+
+    const url = App.urlFor(std.testing.allocator, "user_post", &params);
+    defer if (url) |u| std.testing.allocator.free(u);
+    try std.testing.expect(url != null);
+    try std.testing.expectEqualStrings("/users/7/posts/hello", url.?);
+}
+
+test "Router.define urlFor unknown route returns null" {
+    const H = struct {
+        fn handle(ctx: *Context) !void {
+            ctx.text(.ok, "ok");
+        }
+    };
+
+    const App = Router.define(.{
+        .routes = &.{
+            Router.get("/users/:id", H.handle).named("user_path"),
+        },
+    });
+
+    var params: Params = .{};
+    const url = App.urlFor(std.testing.allocator, "nonexistent", &params);
+    try std.testing.expect(url == null);
+}
+
+test "Router.define urlFor missing param returns null" {
+    const H = struct {
+        fn handle(ctx: *Context) !void {
+            ctx.text(.ok, "ok");
+        }
+    };
+
+    const App = Router.define(.{
+        .routes = &.{
+            Router.get("/users/:id", H.handle).named("user_path"),
+        },
+    });
+
+    var params: Params = .{};
+    // No "id" param set
+    const url = App.urlFor(std.testing.allocator, "user_path", &params);
+    try std.testing.expect(url == null);
 }

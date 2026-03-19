@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const frame_mod = @import("frame.zig");
 const Frame = frame_mod.Frame;
 const Opcode = frame_mod.Opcode;
+const deflate_mod = @import("deflate.zig");
 const Params = @import("../../middleware/context.zig").Params;
 const Assigns = @import("../../middleware/context.zig").Assigns;
 
@@ -28,6 +29,7 @@ fn spinLock(m: *std.atomic.Mutex) void {
 pub const WebSocket = struct {
     allocator: Allocator,
     closed: bool = false,
+    deflate: bool = false,
     params: Params,
     query: Params,
     assigns: Assigns,
@@ -85,7 +87,22 @@ pub const WebSocket = struct {
     }
 
     fn writeFrame(self: *WebSocket, opcode: Opcode, payload: []const u8) !void {
-        const byte0: u8 = 0x80 | @as(u8, @intFromEnum(opcode));
+        // Compress data frames if deflate is negotiated
+        const is_data = (opcode == .text or opcode == .binary);
+        if (self.deflate and is_data and payload.len > 0) {
+            const compressed = deflate_mod.compressPayload(self.allocator, payload) catch
+                return error.CompressionFailed;
+            defer self.allocator.free(compressed);
+            try self.writeRawFrame(opcode, compressed, true);
+        } else {
+            try self.writeRawFrame(opcode, payload, false);
+        }
+    }
+
+    fn writeRawFrame(self: *WebSocket, opcode: Opcode, payload: []const u8, rsv1: bool) !void {
+        const byte0: u8 = 0x80 |
+            (if (rsv1) @as(u8, 0x40) else @as(u8, 0x00)) |
+            @as(u8, @intFromEnum(opcode));
         try self.write_fn(self.writer_ctx, &.{byte0});
 
         if (payload.len < 126) {
@@ -165,6 +182,7 @@ const ErasedReader = struct {
 
 /// Run the WebSocket frame loop. Blocks until the connection is closed.
 /// reader and writer should be pointer types with takeByte/readSliceAll and writeAll/flush.
+/// If `deflate` is true, incoming RSV1 frames are decompressed and outgoing data frames are compressed.
 pub fn runLoop(
     allocator: Allocator,
     reader: anytype,
@@ -173,6 +191,7 @@ pub fn runLoop(
     params: Params,
     query: Params,
     assigns: Assigns,
+    deflate: bool,
 ) void {
     const ReaderPtrType = std.meta.Child(@TypeOf(reader));
     const WriterPtrType = std.meta.Child(@TypeOf(writer));
@@ -182,6 +201,7 @@ pub fn runLoop(
     var ws: WebSocket = .{
         .allocator = allocator,
         .closed = false,
+        .deflate = deflate,
         .params = params,
         .query = query,
         .assigns = assigns,
@@ -256,10 +276,23 @@ pub fn runLoop(
                         // New non-continuation message while fragmenting — reset
                         fragment_buf.clearRetainingCapacity();
                     }
+
+                    // Decompress if RSV1 is set and deflate was negotiated
+                    var decompressed: ?[]u8 = null;
+                    defer if (decompressed) |d| allocator.free(d);
+
+                    const payload = if (frame.rsv1 and deflate) blk: {
+                        decompressed = deflate_mod.decompressPayload(allocator, frame.payload) catch {
+                            ws.close(1007, "decompression failed");
+                            break :blk frame.payload;
+                        };
+                        break :blk decompressed.?;
+                    } else frame.payload;
+
                     const msg: Message = if (frame.opcode == .text)
-                        .{ .text = frame.payload }
+                        .{ .text = payload }
                     else
-                        .{ .binary = frame.payload };
+                        .{ .binary = payload };
                     if (handler.on_message) |on_message| {
                         on_message(&ws, msg);
                     }
@@ -477,6 +510,7 @@ test "runLoop calls on_open and on_close on read error" {
         .{},
         .{},
         .{},
+        false,
     );
 
     try testing.expect(opened);

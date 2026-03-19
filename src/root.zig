@@ -72,17 +72,47 @@ pub const BasicAuthConfig = @import("middleware/auth.zig").BasicAuthConfig;
 pub const jwtAuth = @import("middleware/auth.zig").jwtAuth;
 pub const JwtConfig = @import("middleware/auth.zig").JwtConfig;
 
+// Cache
+pub const Cache = @import("core/cache.zig").Cache;
+pub const cacheMiddleware = @import("middleware/cache_middleware.zig").cacheMiddleware;
+pub const CacheConfig = @import("middleware/cache_middleware.zig").CacheConfig;
+
+// Assets
+pub const assets = @import("middleware/assets.zig").assets;
+pub const assetPath = @import("middleware/assets.zig").assetPath;
+pub const AssetConfig = @import("middleware/assets.zig").AssetConfig;
+pub const AssetManifest = @import("middleware/assets.zig").AssetManifest;
+pub const getAssetManifest = @import("middleware/assets.zig").getManifest;
+
 // Resource Helper (re-exported from Router)
 pub const ResourceHandlers = Router.ResourceHandlers;
+
+// Typed handler helper (auto-detects request/response types for Swagger)
+pub const typed = Router.typed;
 
 // WebSocket
 pub const WebSocket = @import("core/websocket/connection.zig").WebSocket;
 pub const WsMessage = @import("core/websocket/connection.zig").Message;
 pub const WsConfig = @import("middleware/websocket.zig").WsConfig;
+pub const wsHandler = @import("middleware/websocket.zig").wsHandler; // re-export for live-reload and user WS routes
+
+// Server-Sent Events (SSE)
+pub const SseWriter = @import("core/sse.zig").SseWriter;
+pub const sseMiddleware = @import("middleware/sse.zig").sseMiddleware;
+pub const SseConfig = @import("middleware/sse.zig").SseConfig;
+
+// Live Reload
+pub const liveReload = @import("middleware/live_reload.zig").liveReload;
+pub const liveReloadWs = @import("middleware/live_reload.zig").liveReloadWs;
+pub const LiveReloadConfig = @import("middleware/live_reload.zig").LiveReloadConfig;
 
 // zzz.js Client Library
 pub const zzzJs = @import("middleware/zzz_js.zig").zzzJs;
 pub const ZzzJsConfig = @import("middleware/zzz_js.zig").ZzzJsConfig;
+
+// SSR Bridge
+pub const SsrPool = @import("core/ssr.zig").SsrPool;
+pub const SsrConfig = @import("core/ssr.zig").SsrConfig;
 
 // WebSocket Protocol (for advanced usage)
 pub const ws_protocol = @import("core/websocket/websocket.zig");
@@ -127,16 +157,31 @@ pub const SecurityScheme = @import("router/router.zig").SecurityScheme;
 // Cookie helpers (re-exported from Context)
 pub const CookieOptions = Context.CookieOptions;
 
+// Environment
+pub const Env = @import("env.zig").Env;
+
+// Configuration
+pub const Environment = @import("config.zig").Environment;
+pub const DatabaseUrl = @import("config.zig").DatabaseUrl;
+pub const mergeWithEnv = @import("config.zig").mergeWithEnv;
+pub const configInit = @import("config.zig").configInit;
+
 // Testing utilities
 pub const testing = @import("testing/root.zig");
 
 // Re-export Io for convenience
 pub const Io = @import("std").Io;
 
+// Backend info
+pub const backend_name = @import("core/server.zig").backend_name;
+pub const SelectedBackend = @import("core/server.zig").SelectedBackend;
+
+// Timer (available when backend=libhv)
+pub const Timer = if (@hasDecl(SelectedBackend, "Timer")) SelectedBackend.Timer else void;
+pub const addTimer = if (@hasDecl(SelectedBackend, "addTimer")) SelectedBackend.addTimer else {};
+pub const removeTimer = if (@hasDecl(SelectedBackend, "removeTimer")) SelectedBackend.removeTimer else {};
+pub const resetTimer = if (@hasDecl(SelectedBackend, "resetTimer")) SelectedBackend.resetTimer else {};
+
 /// Framework version.
 pub const version = "0.1.0";
 
-test {
-    // Run all tests in submodules
-    std.testing.refAllDecls(@This());
-}

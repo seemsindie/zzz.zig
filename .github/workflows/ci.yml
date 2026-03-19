@@ -13,9 +13,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Clone zzz_template dependency
+      run: git clone --depth 1 https://github.com/seemsindie/zzz_template.git ../zzz_template
     - uses: mlugg/setup-zig@v2
       with:
-        version: 0.16.0-dev.2535+b5bd49460
+        version: 0.16.0-dev.2905+5d71e3051
+    - name: Clear stale package cache
+      run: rm -rf .zig-cache/p/
     - name: Build
       run: zig build
     - name: Test

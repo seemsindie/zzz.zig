@@ -3,15 +3,18 @@ const builtin = @import("builtin");
 const native_os = builtin.os.tag;
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
-const http_parser = @import("http/parser.zig");
-const Request = @import("http/request.zig").Request;
-const Response = @import("http/response.zig").Response;
-const StatusCode = @import("http/status.zig").StatusCode;
-const ws_handshake = @import("websocket/handshake.zig");
-const ws_connection = @import("websocket/connection.zig");
 
 const tls_enabled = @import("tls_options").tls_enabled;
 const tls = if (tls_enabled) @import("tls") else undefined;
+
+const backend_mod = @import("backend.zig");
+pub const SelectedBackend = backend_mod.SelectedBackend;
+pub const backend_name = backend_mod.backend_name;
+
+pub const request_handler = @import("request_handler.zig");
+
+const Request = @import("http/request.zig").Request;
+const Response = @import("http/response.zig").Response;
 
 /// Handler function type: receives a request, returns a response.
 pub const Handler = *const fn (Allocator, *const Request) anyerror!Response;
@@ -35,6 +38,8 @@ pub const Config = struct {
     max_connections: u32 = 1024,
     max_requests_per_connection: u32 = 100,
     kernel_backlog: u31 = 128,
+    drain_timeout_ms: u32 = 30_000, // 30s
+    shutdown_hooks: [8]?*const fn () void = .{ null, null, null, null, null, null, null, null },
     tls: ?TlsConfig = null,
 };
 
@@ -58,7 +63,7 @@ pub const Server = struct {
         };
     }
 
-    /// Start listening and serving requests.
+    /// Start listening and serving requests via the selected backend.
     pub fn listen(self: *Server, io: Io) !void {
         self.installSignalHandlers();
 
@@ -79,62 +84,19 @@ pub const Server = struct {
             if (self.ssl_ctx) |ctx| tls.SslContext.deinitSslContext(ctx);
         };
 
-        const address = try Io.net.IpAddress.parseIp4(self.config.host, self.config.port);
-
-        var server = try address.listen(io, .{
-            .reuse_address = true,
-            .kernel_backlog = self.config.kernel_backlog,
-        });
-        defer server.deinit(io);
-
-        const scheme = if (tls_enabled and self.config.tls != null) "https" else "http";
-        std.log.info("Zzz server listening on {s}://{s}:{d}", .{ scheme, self.config.host, self.config.port });
-
-        while (!self.shutdown_flag.load(.acquire)) {
-            var stream = server.accept(io) catch |err| {
-                if (self.shutdown_flag.load(.acquire)) break;
-                std.log.warn("accept error: {}", .{err});
-                continue;
-            };
-
-            if (self.config.worker_threads == 0) {
-                // Single-threaded mode: handle inline
-                self.handleConnection(io, &stream);
-            } else {
-                // Multi-threaded mode: check backpressure
-                if (self.active_connections.load(.acquire) >= self.config.max_connections) {
-                    stream.close(io);
-                    continue;
-                }
-
-                const thread = std.Thread.spawn(.{}, connectionThread, .{ self, stream, io }) catch {
-                    stream.close(io);
-                    continue;
-                };
-                thread.detach();
-            }
-        }
-
-        // Graceful shutdown: drain active connections
-        std.log.info("Shutting down, waiting for active connections to drain...", .{});
-        self.drainConnections();
-        std.log.info("Server stopped.", .{});
+        // Delegate to the selected backend
+        try SelectedBackend.listen(self, io);
     }
 
-    /// Thread entry point for multi-threaded mode.
-    fn connectionThread(self: *Server, stream_val: Io.net.Stream, io: Io) void {
-        _ = self.active_connections.fetchAdd(1, .release);
-        defer _ = self.active_connections.fetchSub(1, .release);
-
-        var stream = stream_val;
-        self.handleConnection(io, &stream);
-    }
-
-    fn handleConnection(self: *Server, io: Io, stream: *Io.net.Stream) void {
+    /// Handle a single connection: set up reader/writer (plain or TLS),
+    /// then run the shared request handler loop.
+    pub fn handleConnection(self: *Server, io: Io, stream: *Io.net.Stream) void {
         defer stream.close(io);
 
-        // Set socket timeouts
-        self.setSocketTimeouts(stream);
+        // Set write timeout so sends don't block indefinitely.
+        // Read timeouts are handled via poll() in the request handler
+        // to avoid EAGAIN panics in std.Io on macOS.
+        setSocketTimeouts(stream.socket.handle, self.config);
 
         if (tls_enabled) {
             if (self.ssl_ctx) |ctx| {
@@ -150,7 +112,15 @@ pub const Server = struct {
                 var write_buf: [16384]u8 = undefined;
                 var tls_writer = tls.TlsWriter.init(ssl, &write_buf);
 
-                self.handleRequests(&tls_reader.interface, &tls_writer.interface);
+                request_handler.handleRequests(
+                    self.config,
+                    self.handler,
+                    self.allocator,
+                    &tls_reader.interface,
+                    &tls_writer.interface,
+                    &self.shutdown_flag,
+                    stream.socket.handle,
+                );
                 return;
             }
         }
@@ -161,277 +131,35 @@ pub const Server = struct {
         var write_buf: [16384]u8 = undefined;
         var writer: Io.net.Stream.Writer = .init(stream.*, io, &write_buf);
 
-        self.handleRequests(&reader.interface, &writer.interface);
+        request_handler.handleRequests(
+            self.config,
+            self.handler,
+            self.allocator,
+            &reader.interface,
+            &writer.interface,
+            &self.shutdown_flag,
+            stream.socket.handle,
+        );
     }
 
-    /// Handle the HTTP request/response loop over a reader/writer pair.
-    /// Works identically for both plain TCP and TLS connections.
-    fn handleRequests(self: *Server, reader: *Io.Reader, writer: *Io.Writer) void {
-        var requests_served: u32 = 0;
-
-        while (requests_served < self.config.max_requests_per_connection) {
-            if (self.shutdown_flag.load(.acquire)) break;
-
-            // Read request header byte by byte, looking for \r\n\r\n
-            var req_buf: [16384]u8 = undefined;
-            var total_read: usize = 0;
-
-            while (total_read < req_buf.len) {
-                const byte = reader.takeByte() catch return;
-                req_buf[total_read] = byte;
-                total_read += 1;
-
-                // Check if we have complete headers (\r\n\r\n)
-                if (total_read >= 4 and
-                    req_buf[total_read - 4] == '\r' and
-                    req_buf[total_read - 3] == '\n' and
-                    req_buf[total_read - 2] == '\r' and
-                    req_buf[total_read - 1] == '\n')
-                {
-                    break;
-                }
-            }
-
-            // Client closed connection
-            if (total_read == 0) return;
-
-            // Parse request
-            const parse_result = http_parser.parse(self.allocator, req_buf[0..total_read]) catch |err| {
-                std.log.debug("parse error: {}", .{err});
-                self.sendError(writer, .bad_request);
-                return;
-            };
-            var req = parse_result.request;
-            defer req.deinit(self.allocator);
-
-            // Handle 100-continue
-            if (req.header("Expect")) |expect| {
-                if (std.ascii.eqlIgnoreCase(expect, "100-continue")) {
-                    writer.writeAll("HTTP/1.1 100 Continue\r\n\r\n") catch {};
-                    writer.flush() catch {};
-                }
-            }
-
-            // Read body
-            var should_continue = true;
-            if (req.isChunked() and req.contentLength() == null) {
-                // Chunked transfer encoding
-                const body_data = self.readChunkedBody(reader, self.allocator) catch {
-                    self.sendError(writer, .bad_request);
-                    return;
-                };
-                if (body_data) |data| {
-                    defer self.allocator.free(data);
-                    req.body = data;
-
-                    // Call handler and send response
-                    should_continue = self.processRequest(reader, writer, &req, requests_served);
-                } else {
-                    should_continue = self.processRequest(reader, writer, &req, requests_served);
-                }
-            } else if (req.contentLength()) |content_len| {
-                if (content_len > self.config.max_body_size) {
-                    self.sendError(writer, .payload_too_large);
-                    return;
-                }
-                if (content_len > 0) {
-                    const body_buf = self.allocator.alloc(u8, content_len) catch {
-                        self.sendError(writer, .payload_too_large);
-                        return;
-                    };
-                    defer self.allocator.free(body_buf);
-
-                    // Some body bytes may already be in req_buf after headers
-                    const already_read = total_read - parse_result.bytes_consumed;
-                    if (already_read > 0) {
-                        const copy_len = @min(already_read, content_len);
-                        @memcpy(body_buf[0..copy_len], req_buf[parse_result.bytes_consumed .. parse_result.bytes_consumed + copy_len]);
-                    }
-
-                    // Read remaining body bytes from stream
-                    const body_so_far = @min(already_read, content_len);
-                    if (body_so_far < content_len) {
-                        reader.readSliceAll(body_buf[body_so_far..content_len]) catch return;
-                    }
-                    req.body = body_buf;
-
-                    should_continue = self.processRequest(reader, writer, &req, requests_served);
-                } else {
-                    should_continue = self.processRequest(reader, writer, &req, requests_served);
-                }
-            } else {
-                should_continue = self.processRequest(reader, writer, &req, requests_served);
-            }
-
-            // If processRequest returned false (e.g., WebSocket upgrade), exit the loop
-            if (!should_continue) return;
-
-            requests_served += 1;
-
-            // Check if we should keep the connection alive
-            const keep_alive = req.keepAlive() and
-                (requests_served < self.config.max_requests_per_connection);
-            if (!keep_alive) break;
-        }
-    }
-
-    /// Process a parsed request: call handler, set keep-alive headers, send response.
-    /// Returns `true` to continue keep-alive loop, `false` to break (e.g. WebSocket upgrade).
-    fn processRequest(
-        self: *Server,
-        reader: *Io.Reader,
-        writer: *Io.Writer,
-        req: *Request,
-        requests_served: u32,
-    ) bool {
-        var resp = self.handler(self.allocator, req) catch |err| {
-            std.log.err("handler error: {}", .{err});
-            self.sendError(writer, .internal_server_error);
-            return true;
-        };
-        defer resp.deinit(self.allocator);
-
-        // Check for WebSocket upgrade
-        if (resp.status == .switching_protocols) {
-            if (resp.ws_handler) |ws_upgrade| {
-                // Build and send the 101 handshake response
-                const upgrade_bytes = ws_handshake.buildUpgradeResponse(self.allocator, req) catch {
-                    self.sendError(writer, .internal_server_error);
-                    return false;
-                };
-                defer self.allocator.free(upgrade_bytes);
-
-                writer.writeAll(upgrade_bytes) catch return false;
-                writer.flush() catch return false;
-
-                // Enter the WebSocket frame loop (blocks until WS closes)
-                ws_connection.runLoop(
-                    self.allocator,
-                    reader,
-                    writer,
-                    ws_upgrade.handler,
-                    ws_upgrade.params,
-                    ws_upgrade.query,
-                    ws_upgrade.assigns,
-                );
-
-                // Free the WebSocketUpgrade allocated in wsHandler middleware
-                self.allocator.destroy(ws_upgrade);
-
-                return false; // Connection taken over, exit HTTP loop
-            }
-        }
-
-        // Set response version to match request
-        resp.version = req.version;
-
-        // Set Connection header based on keep-alive status
-        const keep_alive = req.keepAlive() and
-            (requests_served + 1 < self.config.max_requests_per_connection);
-        resp.headers.set(self.allocator, "Connection", if (keep_alive) "keep-alive" else "close") catch {};
-
-        self.sendResponseWriter(writer, &resp);
-        return true;
-    }
-
-    /// Read a chunked request body, accumulating chunks until the terminating 0-length chunk.
-    fn readChunkedBody(self: *Server, reader: *Io.Reader, allocator: Allocator) !?[]u8 {
-        var body: std.ArrayList(u8) = .empty;
-        errdefer body.deinit(allocator);
-
-        while (true) {
-            // Read chunk size line (hex digits followed by \r\n)
-            var line_buf: [64]u8 = undefined;
-            var line_len: usize = 0;
-
-            while (line_len < line_buf.len) {
-                const byte = try reader.takeByte();
-                if (byte == '\r') {
-                    // Expect \n next
-                    const lf = try reader.takeByte();
-                    if (lf != '\n') return error.InvalidChunkedEncoding;
-                    break;
-                }
-                line_buf[line_len] = byte;
-                line_len += 1;
-            }
-
-            if (line_len == 0) return error.InvalidChunkedEncoding;
-
-            // Strip optional chunk extensions (after semicolon)
-            var size_str = line_buf[0..line_len];
-            if (std.mem.indexOf(u8, size_str, ";")) |semi| {
-                size_str = line_buf[0..semi];
-            }
-
-            const chunk_size = std.fmt.parseInt(usize, size_str, 16) catch
-                return error.InvalidChunkedEncoding;
-
-            // Chunk size 0 = end of body
-            if (chunk_size == 0) {
-                // Read trailing \r\n after the last chunk
-                _ = reader.takeByte() catch {};
-                _ = reader.takeByte() catch {};
-                break;
-            }
-
-            // Enforce max body size
-            if (body.items.len + chunk_size > self.config.max_body_size) {
-                return error.PayloadTooLarge;
-            }
-
-            // Read chunk data
-            const start = body.items.len;
-            try body.resize(allocator, start + chunk_size);
-            reader.readSliceAll(body.items[start..]) catch
-                return error.InvalidChunkedEncoding;
-
-            // Read trailing \r\n after chunk data
-            const cr = reader.takeByte() catch return error.InvalidChunkedEncoding;
-            const lf = reader.takeByte() catch return error.InvalidChunkedEncoding;
-            if (cr != '\r' or lf != '\n') return error.InvalidChunkedEncoding;
-        }
-
-        if (body.items.len == 0) return null;
-        return try body.toOwnedSlice(allocator);
-    }
-
-    fn sendResponseWriter(self: *Server, writer: *Io.Writer, resp: *const Response) void {
-        _ = self;
-        const bytes = resp.serialize(std.heap.page_allocator) catch return;
-        defer std.heap.page_allocator.free(bytes);
-
-        writer.writeAll(bytes) catch return;
-        writer.flush() catch return;
-    }
-
-    fn sendError(self: *Server, writer: *Io.Writer, status: StatusCode) void {
-        var resp = Response.empty(status);
-        self.sendResponseWriter(writer, &resp);
-    }
-
-    /// Set socket read/write timeouts using setsockopt.
-    ///
-    /// NOTE: SO_RCVTIMEO and SO_SNDTIMEO are disabled because Zig 0.16's std.Io
-    /// reader/writer treat EAGAIN (returned when a timeout fires on a blocking
-    /// socket) as a programmer bug and panic. This affects both HTTP keep-alive
-    /// connections that sit idle and long-lived WebSocket connections. The config
-    /// fields are retained for future use when a compatible timeout mechanism is
-    /// available (e.g., poll/select before read, or async I/O).
-    fn setSocketTimeouts(self: *Server, stream: *Io.net.Stream) void {
-        _ = self;
-        _ = stream;
+    /// Set SO_SNDTIMEO on a socket fd.
+    /// Note: SO_RCVTIMEO is intentionally not set — on macOS, read timeouts
+    /// cause EAGAIN which panics in std.Io. Read timeouts are handled via
+    /// poll() in the request handler instead.
+    fn setSocketTimeouts(fd: std.posix.fd_t, config: Config) void {
+        const send_tv = msToTimeval(config.write_timeout_ms);
+        std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.SNDTIMEO, &std.mem.toBytes(send_tv)) catch {};
     }
 
     fn msToTimeval(ms: u32) std.posix.timeval {
         return .{
             .sec = @intCast(ms / 1000),
-            .usec = @intCast(@as(u32, ms % 1000) * 1000),
+            .usec = @intCast(@as(u64, ms % 1000) * 1000),
         };
     }
 
     /// Install signal handlers for graceful shutdown (SIGINT, SIGTERM).
-    fn installSignalHandlers(self: *Server) void {
+    pub fn installSignalHandlers(self: *Server) void {
         global_server = self;
         const act: std.posix.Sigaction = .{
             .handler = .{ .handler = signalHandler },
@@ -442,9 +170,19 @@ pub const Server = struct {
         std.posix.sigaction(std.posix.SIG.TERM, &act, null);
     }
 
-    /// Wait for active connections to drain (up to 10 seconds).
-    fn drainConnections(self: *Server) void {
-        const timeout_ns: i128 = 10 * std.time.ns_per_s;
+    /// Perform a graceful shutdown: run hooks, close channels, drain connections.
+    pub fn shutdown(self: *Server) void {
+        // Run user shutdown hooks
+        for (self.config.shutdown_hooks) |hook| {
+            if (hook) |h| h();
+        }
+        // Drain active HTTP connections
+        self.drainConnections();
+    }
+
+    /// Wait for active connections to drain (up to configured timeout).
+    pub fn drainConnections(self: *Server) void {
+        const timeout_ns: i128 = @as(i128, self.config.drain_timeout_ms) * std.time.ns_per_ms;
         const start = getMonotonicNs();
 
         while (self.active_connections.load(.acquire) > 0) {

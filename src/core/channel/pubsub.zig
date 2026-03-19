@@ -140,6 +140,24 @@ pub const PubSub = struct {
         }
     }
 
+    /// Send a message to a specific subscriber of a topic.
+    /// Verifies the target is actually subscribed before sending.
+    pub fn sendTo(topic: []const u8, message: []const u8, target: *WebSocket) void {
+        var found = false;
+        {
+            spinLock(&mutex);
+            defer mutex.unlock();
+            const entry = findTopic(topic) orelse return;
+            for (entry.subscribers[0..entry.sub_count]) |ws| {
+                if (ws == target) {
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (found) target.send(message);
+    }
+
     /// Broadcast a message to all subscribers except the sender.
     pub fn broadcastFrom(topic: []const u8, message: []const u8, sender: *WebSocket) void {
         var snapshot: [max_subscribers]*WebSocket = undefined;
@@ -280,6 +298,38 @@ test "PubSub unsubscribeAll" {
     PubSub.unsubscribeAll(&ws1);
     try testing.expectEqual(@as(usize, 0), PubSub.subscriberCount("topic1"));
     try testing.expectEqual(@as(usize, 0), PubSub.subscriberCount("topic2"));
+}
+
+test "PubSub sendTo sends only to target" {
+    PubSub.reset();
+    var w1: MockWriter = .{};
+    var w2: MockWriter = .{};
+    var ws1 = makeTestWs(&w1);
+    var ws2 = makeTestWs(&w2);
+
+    _ = PubSub.subscribe("room", &ws1);
+    _ = PubSub.subscribe("room", &ws2);
+
+    PubSub.sendTo("room", "direct", &ws2);
+    // ws1 should NOT have received
+    try testing.expectEqual(@as(usize, 0), w1.pos);
+    // ws2 should have received
+    try testing.expect(w2.pos > 0);
+}
+
+test "PubSub sendTo to non-subscriber does nothing" {
+    PubSub.reset();
+    var w1: MockWriter = .{};
+    var w2: MockWriter = .{};
+    var ws1 = makeTestWs(&w1);
+    var ws2 = makeTestWs(&w2);
+
+    _ = PubSub.subscribe("room", &ws1);
+    // ws2 is NOT subscribed
+
+    PubSub.sendTo("room", "direct", &ws2);
+    try testing.expectEqual(@as(usize, 0), w1.pos);
+    try testing.expectEqual(@as(usize, 0), w2.pos);
 }
 
 test "PubSub duplicate subscribe is idempotent" {
