@@ -18,7 +18,7 @@ pub fn requestId(comptime config: RequestIdConfig) HandlerFn {
                 const ts: u64 = @intCast(@as(u128, @bitCast(getMonotonicNs())) & 0xFFFFFFFFFFFF);
                 const cnt = @atomicRmw(u64, &counter, .Add, 1, .monotonic);
                 var buf: [64]u8 = undefined;
-                const generated = std.fmt.bufPrint(&buf, "zzz-{x}-{x}", .{ ts, cnt }) catch break :blk null;
+                const generated = std.fmt.bufPrint(&buf, "pidgn-{x}-{x}", .{ ts, cnt }) catch break :blk null;
                 const duped = ctx.allocator.dupe(u8, generated) catch break :blk null;
                 ctx.response.trackOwnedSlice(ctx.allocator, duped);
                 break :blk duped;
@@ -73,7 +73,7 @@ test "requestId generates when no header present" {
     try handler(&ctx);
     const id = ctx.getAssign("request_id");
     try std.testing.expect(id != null);
-    try std.testing.expect(std.mem.startsWith(u8, id.?, "zzz-"));
+    try std.testing.expect(std.mem.startsWith(u8, id.?, "pidgn-"));
     try std.testing.expect(ctx.response.headers.get("X-Request-Id") != null);
 }
 

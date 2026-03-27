@@ -1,9 +1,9 @@
 /**
- * zzz.js — Client-side library for the Zzz web framework.
+ * pidgn.js — Client-side library for the Pidgn web framework.
  *
  * Provides WebSocket with auto-reconnect, fetch wrapper, and form submission helper.
  */
-const Zzz = {
+const Pidgn = {
   /**
    * Connect to a WebSocket endpoint with auto-reconnect and exponential backoff.
    *
@@ -109,7 +109,7 @@ const Zzz = {
     const action = el.action || window.location.href;
     const body = new FormData(el);
 
-    return Zzz.fetch(action, { method, body, ...opts });
+    return Pidgn.fetch(action, { method, body, ...opts });
   },
 
   /**
@@ -306,5 +306,5 @@ const Zzz = {
 };
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = Zzz;
+  module.exports = Pidgn;
 }

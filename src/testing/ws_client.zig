@@ -14,7 +14,7 @@ const frame_mod = @import("../core/websocket/frame.zig");
 ///
 /// Example:
 /// ```
-/// var ch = zzz.testing.TestChannel(&channel_defs).init(std.testing.allocator);
+/// var ch = pidgn.testing.TestChannel(&channel_defs).init(std.testing.allocator);
 /// defer ch.deinit();
 /// ch.setup();
 /// const result = ch.join("room:lobby", "{}");

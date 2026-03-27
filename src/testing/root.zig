@@ -1,4 +1,4 @@
-//! Testing utilities for zzz applications.
+//! Testing utilities for pidgn applications.
 //!
 //! Provides an HTTP test client, cookie jar, multipart builder, and
 //! WebSocket test channel for testing without a real TCP connection.

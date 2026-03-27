@@ -1,23 +1,23 @@
 const std = @import("std");
-const zzz = @import("zzz");
+const pidgn = @import("pidgn");
 
-const App = zzz.Router.define(.{
-    .middleware = &.{zzz.logger},
+const App = pidgn.Router.define(.{
+    .middleware = &.{pidgn.logger},
     .routes = &.{
-        zzz.Router.get("/", indexHandler),
-        zzz.Router.get("/hello", helloHandler),
-        zzz.Router.get("/json", jsonHandler),
-        zzz.Router.get("/users/:id", userHandler),
+        pidgn.Router.get("/", indexHandler),
+        pidgn.Router.get("/hello", helloHandler),
+        pidgn.Router.get("/json", jsonHandler),
+        pidgn.Router.get("/users/:id", userHandler),
     },
 });
 
-fn indexHandler(ctx: *zzz.Context) !void {
+fn indexHandler(ctx: *pidgn.Context) !void {
     ctx.html(.ok,
         \\<!DOCTYPE html>
         \\<html>
-        \\<head><title>Zzz</title></head>
+        \\<head><title>Pidgn</title></head>
         \\<body>
-        \\  <h1>Welcome to Zzz</h1>
+        \\  <h1>Welcome to Pidgn</h1>
         \\  <p>The Zig web framework that never sleeps.</p>
         \\  <ul>
         \\    <li><a href="/hello">Hello</a></li>
@@ -29,17 +29,17 @@ fn indexHandler(ctx: *zzz.Context) !void {
     );
 }
 
-fn helloHandler(ctx: *zzz.Context) !void {
-    ctx.text(.ok, "Hello from Zzz!");
+fn helloHandler(ctx: *pidgn.Context) !void {
+    ctx.text(.ok, "Hello from Pidgn!");
 }
 
-fn jsonHandler(ctx: *zzz.Context) !void {
+fn jsonHandler(ctx: *pidgn.Context) !void {
     ctx.json(.ok,
-        \\{"framework": "zzz", "version": "0.1.0", "status": "awake"}
+        \\{"framework": "pidgn", "version": "0.1.0", "status": "awake"}
     );
 }
 
-fn userHandler(ctx: *zzz.Context) !void {
+fn userHandler(ctx: *pidgn.Context) !void {
     const id = ctx.param("id") orelse "unknown";
     ctx.text(.ok, id);
 }
@@ -48,7 +48,7 @@ pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const io = init.io;
 
-    var server = zzz.Server.init(allocator, .{
+    var server = pidgn.Server.init(allocator, .{
         .host = "127.0.0.1",
         .port = 5555,
     }, App.handler);

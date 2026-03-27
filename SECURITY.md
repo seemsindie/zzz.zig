@@ -12,7 +12,7 @@ If you discover a security vulnerability, please report it responsibly.
 
 **Do not open a public issue.**
 
-Instead, email: **security@zzz.dev** (or open a private security advisory on GitHub)
+Instead, email: **security@pidgn.dev** (or open a private security advisory on GitHub)
 
 Please include:
 - Description of the vulnerability
@@ -29,7 +29,7 @@ Please include:
 ## Scope
 
 This policy covers:
-- `zzz` - Core web framework
-- `zzz_db` - Database layer
-- `zzz_jobs` - Background job processing
-- `zzz_cli` - CLI tool
+- `pidgn` - Core web framework
+- `pidgn_db` - Database layer
+- `pidgn_jobs` - Background job processing
+- `pidgn_cli` - CLI tool

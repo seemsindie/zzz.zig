@@ -1,4 +1,4 @@
-# Zzz - The Zig Web Framework That Never Sleeps
+# Pidgn - The Zig Web Framework That Never Sleeps
 
 ## Vision
 
@@ -11,9 +11,9 @@ Blazing fast, memory-safe, with compile-time magic. Think Phoenix + Ecto + Oban,
 
 ```
 zigweb_workspace/
-  zzz/                    # Core framework (this project)
+  pidgn/                    # Core framework (this project)
     src/
-      zzz.zig             # Public API / root module
+      pidgn.zig             # Public API / root module
       core/
         server.zig         # TCP server, connection handling
         tls.zig            # TLS via OpenSSL (HTTPS)
@@ -94,9 +94,9 @@ zigweb_workspace/
     build.zig
     build.zig.zon
 
-  zzz_db/                  # Database/ORM package (like Ecto)
+  pidgn_db/                  # Database/ORM package (like Ecto)
     src/
-      zzz_db.zig           # Public API
+      pidgn_db.zig           # Public API
       connection/
         pool.zig           # Connection pool
         conn.zig           # Single connection wrapper
@@ -129,9 +129,9 @@ zigweb_workspace/
     build.zig
     build.zig.zon
 
-  zzz_jobs/                # Background job system (like Oban)
+  pidgn_jobs/                # Background job system (like Oban)
     src/
-      zzz_jobs.zig         # Public API
+      pidgn_jobs.zig         # Public API
       queue/
         queue.zig          # Job queue abstraction
         memory_queue.zig   # In-memory queue (dev/testing)
@@ -146,21 +146,21 @@ zigweb_workspace/
     build.zig
     build.zig.zon
 
-  zzz_cli/                 # CLI tools (like mix phx.*)
+  pidgn_cli/                 # CLI tools (like mix phx.*)
     src/
       main.zig             # CLI entry point
       commands/
-        new.zig            # zzz new my_app
-        server.zig         # zzz server (start dev server)
-        routes.zig         # zzz routes (list all routes)
-        migrate.zig        # zzz migrate (run migrations)
-        generate.zig       # zzz gen controller/model/...
-        swagger.zig        # zzz swagger (generate OpenAPI spec)
-        test.zig           # zzz test (run tests with helpers)
+        new.zig            # pidgn new my_app
+        server.zig         # pidgn server (start dev server)
+        routes.zig         # pidgn routes (list all routes)
+        migrate.zig        # pidgn migrate (run migrations)
+        generate.zig       # pidgn gen controller/model/...
+        swagger.zig        # pidgn swagger (generate OpenAPI spec)
+        test.zig           # pidgn test (run tests with helpers)
     build.zig
     build.zig.zon
 
-  zzz_example_app/         # Sample Phoenix-like application
+  pidgn_example_app/         # Sample Phoenix-like application
     src/
       main.zig             # Application entry
       router.zig           # App router
@@ -175,17 +175,17 @@ zigweb_workspace/
         post.zig
       templates/
         layout/
-          app.html.zzz      # Base layout (includes htmx.js script)
+          app.html.pidgn      # Base layout (includes htmx.js script)
         page/
-          index.html.zzz
-          about.html.zzz
+          index.html.pidgn
+          about.html.pidgn
         user/
-          index.html.zzz    # Full page: user list with htmx search
-          show.html.zzz
-          form.html.zzz     # Form with htmx submit (no full page reload)
-          _row.html.zzz     # Partial: single user table row (htmx fragment)
-          _table.html.zzz   # Partial: user table body (htmx fragment)
-          _search.html.zzz  # Partial: search results (htmx fragment)
+          index.html.pidgn    # Full page: user list with htmx search
+          show.html.pidgn
+          form.html.pidgn     # Form with htmx submit (no full page reload)
+          _row.html.pidgn     # Partial: single user table row (htmx fragment)
+          _table.html.pidgn   # Partial: user table body (htmx fragment)
+          _search.html.pidgn  # Partial: search results (htmx fragment)
       static/
         css/
         js/
@@ -306,7 +306,7 @@ server-rendered with htmx (primary), traditional templates, and API+SPA with JS 
 
 #### 3.0 Rendering Strategy Overview
 
-Zzz supports three rendering modes — pick what fits your app:
+Pidgn supports three rendering modes — pick what fits your app:
 
 | Strategy | Use Case | How It Works |
 |----------|----------|-------------|
@@ -353,7 +353,7 @@ support so you can build dynamic apps with zero custom JavaScript.
 
 **Request Detection & Context:**
 ```zig
-fn listUsers(ctx: *zzz.Context) !void {
+fn listUsers(ctx: *pidgn.Context) !void {
     const users = getUsers();
 
     if (ctx.isHtmx()) {
@@ -405,9 +405,9 @@ ctx.htmxRetarget("#user-list");
 ```
 
 **htmx.js Serving:**
-- Bundled: `zzz.staticFiles(.{ .dir = "public" })` — drop htmx.min.js in public/
+- Bundled: `pidgn.staticFiles(.{ .dir = "public" })` — drop htmx.min.js in public/
 - CDN helper: `{{htmx_script}}` template helper emits `<script src="https://unpkg.com/htmx.org@2.0.4"></script>`
-- Or: framework ships htmx.js as embedded asset, served at `/_zzz/htmx.min.js`
+- Or: framework ships htmx.js as embedded asset, served at `/_pidgn/htmx.min.js`
 
 **htmx Middleware (optional):**
 - Auto-detects htmx requests and sets `ctx.assigns["is_htmx"] = "true"`
@@ -485,7 +485,7 @@ const ChatChannel = Channel.define("room:*", .{
 
 ---
 
-### Phase 5: Database Layer (zzz_db)
+### Phase 5: Database Layer (pidgn_db)
 
 **Goal**: Ecto-like database toolkit.
 
@@ -578,7 +578,7 @@ try Repo.transaction(struct {
 
 ---
 
-### Phase 6: Background Jobs (zzz_jobs)
+### Phase 6: Background Jobs (pidgn_jobs)
 
 **Goal**: Oban-like reliable background job processing.
 
@@ -607,7 +607,7 @@ try Jobs.insert(EmailJob, .{...}, .{ .scheduled_at = now.add(.minutes, 30) });
 ```
 
 #### 6.2 Queue System
-- **Database-backed** (uses zzz_db) for persistence/reliability
+- **Database-backed** (uses pidgn_db) for persistence/reliability
 - **In-memory** option for dev/testing
 - Job states: available -> executing -> completed / retryable / discarded
 - FIFO with priority support
@@ -738,7 +738,7 @@ try std.testing.expectEqualStrings("hello", reply.body);
 | WebSocket protocol | RFC 6455, tight integration with server |
 | Query builder | Comptime type reflection, Zig-native |
 | Changeset/validation | Comptime field introspection |
-| Job queue | Tight integration with zzz_db |
+| Job queue | Tight integration with pidgn_db |
 | Swagger generator | Comptime type reflection |
 | Event loop | Platform-specific (kqueue/epoll/io_uring) |
 | Connection pool | Generic, used by both HTTP and DB |
@@ -754,7 +754,7 @@ try std.testing.expectEqualStrings("hello", reply.body);
 ### Bundled JS Assets
 | Asset | Purpose |
 |-------|---------|
-| htmx.min.js (~14KB gzipped) | First-class htmx support, served at `/_zzz/htmx.min.js` or user copies to `public/` |
+| htmx.min.js (~14KB gzipped) | First-class htmx support, served at `/_pidgn/htmx.min.js` or user copies to `public/` |
 
 ### Optional/Future C Libraries
 | Library | Purpose |

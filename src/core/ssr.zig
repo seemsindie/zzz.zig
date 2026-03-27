@@ -103,13 +103,13 @@ pub const SsrPool = struct {
         // Use system() to run bun and capture output
         // For proper implementation, we'd use child process with pipes
         // For now, write to temp file and read back
-        const tmp_script = "/tmp/zzz-ssr-render.js";
-        const tmp_output = "/tmp/zzz-ssr-output.html";
+        const tmp_script = "/tmp/pidgn-ssr-render.js";
+        const tmp_output = "/tmp/pidgn-ssr-output.html";
 
         // Write script
         writeTmpFile(tmp_script, script);
 
-        // Run: bun run /tmp/zzz-ssr-render.js > /tmp/zzz-ssr-output.html
+        // Run: bun run /tmp/pidgn-ssr-render.js > /tmp/pidgn-ssr-output.html
         var cmd_buf: [512]u8 = undefined;
         const cmd = std.fmt.bufPrint(&cmd_buf, "bun run {s} > {s} 2>/dev/null", .{ tmp_script, tmp_output }) catch return error.CommandTooLong;
 

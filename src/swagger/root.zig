@@ -1,13 +1,13 @@
-//! Swagger/OpenAPI support for the Zzz web framework.
+//! Swagger/OpenAPI support for the Pidgn web framework.
 //!
 //! Provides comptime OpenAPI 3.1.0 spec generation and Swagger UI serving.
 //! Only routes annotated with `.doc()` appear in the generated spec.
 //!
 //! Usage:
-//!   const routes = &[_]zzz.RouteDef{ ... };
-//!   const spec = zzz.swagger.generateSpec(.{ .title = "My API" }, routes);
+//!   const routes = &[_]pidgn.RouteDef{ ... };
+//!   const spec = pidgn.swagger.generateSpec(.{ .title = "My API" }, routes);
 //!   // In middleware:
-//!   zzz.swagger.ui(.{ .spec_json = spec })
+//!   pidgn.swagger.ui(.{ .spec_json = spec })
 
 pub const schema = @import("schema.zig");
 pub const spec = @import("spec.zig");

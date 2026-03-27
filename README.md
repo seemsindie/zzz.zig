@@ -1,4 +1,4 @@
-# zzz.zig
+# pidgn
 
 A Phoenix-inspired, batteries-included web framework written in Zig.
 
@@ -13,7 +13,7 @@ A fast, memory-safe web framework with compile-time route resolution, a rich mid
 - **Compile-time Router** with path/query params, scoping, and RESTful resources
 - **20 Built-in Middleware** -- logging, CORS, compression, auth, rate limiting, CSRF, sessions, body parsing, static files, error handling, and more
 - **WebSocket** support with frame encoding/decoding and HTTP upgrade
-- **Phoenix-style Channels** with topic-based pub/sub, presence tracking, and a zzz.js client library
+- **Phoenix-style Channels** with topic-based pub/sub, presence tracking, and a pidgn.js client library
 - **Template Engine** with layouts, partials, and XSS-safe HTML escaping
 - **OpenAPI/Swagger** spec generation from route annotations with Swagger UI
 - **Observability** -- structured logging, request IDs, metrics (Prometheus), telemetry hooks, health checks
@@ -33,16 +33,16 @@ A fast, memory-safe web framework with compile-time route resolution, a rich mid
 
 ```zig
 const std = @import("std");
-const zzz = @import("zzz");
+const pidgn = @import("pidgn");
 
-fn index(ctx: *zzz.Context) !void {
-    ctx.text(.ok, "Hello from zzz!");
+fn index(ctx: *pidgn.Context) !void {
+    ctx.text(.ok, "Hello from pidgn!");
 }
 
-const App = zzz.Router.define(.{
-    .middleware = &.{zzz.logger},
+const App = pidgn.Router.define(.{
+    .middleware = &.{pidgn.logger},
     .routes = &.{
-        zzz.Router.get("/", index),
+        pidgn.Router.get("/", index),
     },
 });
 
@@ -50,7 +50,7 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var server = zzz.Server.init(gpa.allocator(), .{
+    var server = pidgn.Server.init(gpa.allocator(), .{
         .port = 4000,
     }, &App.handler);
 
@@ -61,12 +61,12 @@ pub fn main() !void {
 
 ## Installation
 
-Add zzz as a dependency in your `build.zig.zon`:
+Add pidgn as a dependency in your `build.zig.zon`:
 
 ```zon
 .dependencies = .{
-    .zzz = .{
-        .url = "https://github.com/seemsindie/zzz.zig/archive/<commit>.tar.gz",
+    .pidgn = .{
+        .url = "https://github.com/seemsindie/pidgn/archive/<commit>.tar.gz",
         .hash = "<hash>",
     },
 },
@@ -75,24 +75,24 @@ Add zzz as a dependency in your `build.zig.zon`:
 Then in your `build.zig`:
 
 ```zig
-const zzz_dep = b.dependency("zzz", .{ .target = target, .optimize = optimize });
-exe.root_module.addImport("zzz", zzz_dep.module("zzz"));
+const pidgn_dep = b.dependency("pidgn", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("pidgn", pidgn_dep.module("pidgn"));
 ```
 
 ## Middleware
 
 ```zig
-const App = zzz.Router.define(.{
+const App = pidgn.Router.define(.{
     .middleware = &.{
-        zzz.errorHandler(.{ .show_details = true }),
-        zzz.logger,
-        zzz.gzipCompress(.{}),
-        zzz.requestId(.{}),
-        zzz.cors(.{ .allow_origins = &.{"*"} }),
-        zzz.bodyParser(.{}),
-        zzz.session(.{}),
-        zzz.csrf(.{}),
-        zzz.staticFiles(.{ .root = "public", .prefix = "/static" }),
+        pidgn.errorHandler(.{ .show_details = true }),
+        pidgn.logger,
+        pidgn.gzipCompress(.{}),
+        pidgn.requestId(.{}),
+        pidgn.cors(.{ .allow_origins = &.{"*"} }),
+        pidgn.bodyParser(.{}),
+        pidgn.session(.{}),
+        pidgn.csrf(.{}),
+        pidgn.staticFiles(.{ .root = "public", .prefix = "/static" }),
     },
     .routes = &.{ ... },
 });
@@ -102,12 +102,12 @@ const App = zzz.Router.define(.{
 
 ```zig
 const routes = &.{
-    zzz.Router.get("/", index),
-    zzz.Router.post("/users", createUser),
-    zzz.Router.get("/users/:id", getUser),
+    pidgn.Router.get("/", index),
+    pidgn.Router.post("/users", createUser),
+    pidgn.Router.get("/users/:id", getUser),
 
     // RESTful resource
-    zzz.Router.resource("/posts", .{
+    pidgn.Router.resource("/posts", .{
         .index = listPosts,
         .show = showPost,
         .create = createPost,
@@ -116,10 +116,10 @@ const routes = &.{
     }),
 
     // Scoped routes with middleware
-    zzz.Router.scope("/api", .{
-        .middleware = &.{ zzz.bearerAuth(.{ .validate = &myValidator }) },
+    pidgn.Router.scope("/api", .{
+        .middleware = &.{ pidgn.bearerAuth(.{ .validate = &myValidator }) },
     }, &.{
-        zzz.Router.get("/me", currentUser),
+        pidgn.Router.get("/me", currentUser),
     }),
 };
 ```
@@ -128,12 +128,12 @@ const routes = &.{
 
 ```zig
 // WebSocket echo server
-zzz.Router.websocket("/ws/echo", .{
+pidgn.Router.websocket("/ws/echo", .{
     .on_text = &echoText,
 });
 
 // Phoenix-style channels
-zzz.Router.channel("/socket", .{
+pidgn.Router.channel("/socket", .{
     .channels = &.{
         .{ .topic_pattern = "room:*", .join = &handleJoin, .handlers = &.{
             .{ .event = "new_msg", .handler = &handleMessage },
@@ -145,23 +145,23 @@ zzz.Router.channel("/socket", .{
 ## Server-Sent Events (SSE)
 
 ```zig
-fn sseHandler(ctx: *zzz.Context) !void {
+fn sseHandler(ctx: *pidgn.Context) !void {
     ctx.respond(.ok, "text/event-stream", "");
     // SSE headers set automatically by sseMiddleware
 }
 
 // In routes:
-zzz.Router.scope("/events", &.{zzz.sseMiddleware(.{})}, &.{
-    zzz.Router.get("", sseHandler),
+pidgn.Router.scope("/events", &.{pidgn.sseMiddleware(.{})}, &.{
+    pidgn.Router.get("", sseHandler),
 }),
 ```
 
 ## Caching
 
 ```zig
-const App = zzz.Router.define(.{
+const App = pidgn.Router.define(.{
     .middleware = &.{
-        zzz.cacheMiddleware(.{
+        pidgn.cacheMiddleware(.{
             .cacheable_prefixes = &.{"/api/"},
             .default_ttl_s = 300,
         }),
@@ -171,7 +171,7 @@ const App = zzz.Router.define(.{
 });
 
 // Or use the generic cache directly:
-var cache: zzz.Cache([]const u8) = .{};
+var cache: pidgn.Cache([]const u8) = .{};
 cache.put("key", "value", 60_000); // 60s TTL
 const val = cache.get("key");
 ```
@@ -179,7 +179,7 @@ const val = cache.get("key");
 ## OpenAPI / Swagger
 
 ```zig
-zzz.Router.get("/users", listUsers).doc(.{
+pidgn.Router.get("/users", listUsers).doc(.{
     .summary = "List users",
     .description = "Returns all users",
     .tags = &.{"Users"},
@@ -187,7 +187,7 @@ zzz.Router.get("/users", listUsers).doc(.{
 });
 
 // Generate spec
-const spec = zzz.swagger.generateSpec(.{
+const spec = pidgn.swagger.generateSpec(.{
     .title = "My API",
     .version = "1.0.0",
     .security_schemes = &.{
@@ -209,7 +209,7 @@ zig build -Dtls=true
 
 ## Documentation
 
-Full documentation available at [docs.zzz.indielab.link](https://docs.zzz.indielab.link).
+Full documentation available at [docs.pidgn.indielab.link](https://docs.pidgn.indielab.link).
 
 ## Ecosystem
 
@@ -217,22 +217,22 @@ Full documentation available at [docs.zzz.indielab.link](https://docs.zzz.indiel
 
 | Package | Description |
 |---------|-------------|
-| [zzz.zig](https://github.com/seemsindie/zzz.zig) | A performant web framework for Zig |
-| [zzz_db](https://github.com/seemsindie/zzz_db) | Database layer for Zig — schemas, queries, migrations, and connection pooling |
-| [zzz_jobs](https://github.com/seemsindie/zzz_jobs) | Reliable background jobs for Zig — queues, retries, scheduling, and priorities |
-| [zzz_mailer](https://github.com/seemsindie/zzz_mailer) | Email delivery for Zig — templates, attachments, and multi-provider support |
-| [zzz_template](https://github.com/seemsindie/zzz_template) | Compile-time template engine for Zig with type-safe bindings |
+| [pidgn](https://github.com/seemsindie/pidgn) | A performant web framework for Zig |
+| [pidgn_db](https://github.com/seemsindie/pidgn_db) | Database layer for Zig — schemas, queries, migrations, and connection pooling |
+| [pidgn_jobs](https://github.com/seemsindie/pidgn_jobs) | Reliable background jobs for Zig — queues, retries, scheduling, and priorities |
+| [pidgn_mailer](https://github.com/seemsindie/pidgn_mailer) | Email delivery for Zig — templates, attachments, and multi-provider support |
+| [pidgn_template](https://github.com/seemsindie/pidgn_template) | Compile-time template engine for Zig with type-safe bindings |
 
 ### Tooling
 
 | Package | Description |
 |---------|-------------|
-| [zzz_cli](https://github.com/seemsindie/zzz_cli) | Command-line toolkit for the zzz web framework |
-| [zzz_docs](https://github.com/seemsindie/zzz_docs) | Documentation for the zzz web framework |
-| [zzz_vscode](https://github.com/seemsindie/zzz_vscode) | Visual Studio Code extension for zzz template syntax |
-| [homebrew-zzz](https://github.com/seemsindie/homebrew-zzz) | Homebrew formulae for the zzz CLI |
-| [zzz_example_app](https://github.com/seemsindie/zzz_example_app) | Reference application showcasing the zzz web framework |
-| [zzzworkspace](https://github.com/seemsindie/zzzworkspace) | Development workspace and tooling for the zzz ecosystem |
+| [pidgn_cli](https://github.com/seemsindie/pidgn_cli) | Command-line toolkit for the pidgn web framework |
+| [pidgn_docs](https://github.com/seemsindie/pidgn_docs) | Documentation for the pidgn web framework |
+| [pidgn_vscode](https://github.com/seemsindie/pidgn_vscode) | Visual Studio Code extension for pidgn template syntax |
+| [homebrew-pidgn](https://github.com/seemsindie/homebrew-pidgn) | Homebrew formulae for the pidgn CLI |
+| [pidgn_example_app](https://github.com/seemsindie/pidgn_example_app) | Reference application showcasing the pidgn web framework |
+| [pidgnworkspace](https://github.com/seemsindie/pidgnworkspace) | Development workspace and tooling for the pidgn ecosystem |
 
 ## Requirements
 

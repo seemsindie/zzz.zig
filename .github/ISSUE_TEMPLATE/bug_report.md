@@ -28,8 +28,8 @@ What actually happened.
 
 - **OS**: (e.g., macOS 15, Ubuntu 24.04)
 - **Zig version**: (output of `zig version`)
-- **zzz version**: (e.g., 0.1.0)
-- **Package**: (zzz, zzz_db, zzz_jobs, zzz_cli)
+- **pidgn version**: (e.g., 0.1.0)
+- **Package**: (pidgn, pidgn_db, pidgn_jobs, pidgn_cli)
 
 ## Additional Context
 

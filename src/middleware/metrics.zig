@@ -54,34 +54,34 @@ pub fn metrics(comptime config: MetricsConfig) HandlerFn {
 
                 var buf: [2048]u8 = undefined;
                 const result = std.fmt.bufPrint(&buf,
-                    \\# HELP zzz_requests_total Total number of HTTP requests.
-                    \\# TYPE zzz_requests_total counter
-                    \\zzz_requests_total {d}
-                    \\# HELP zzz_requests_by_status HTTP requests by status class.
-                    \\# TYPE zzz_requests_by_status counter
-                    \\zzz_requests_by_status{{class="1xx"}} {d}
-                    \\zzz_requests_by_status{{class="2xx"}} {d}
-                    \\zzz_requests_by_status{{class="3xx"}} {d}
-                    \\zzz_requests_by_status{{class="4xx"}} {d}
-                    \\zzz_requests_by_status{{class="5xx"}} {d}
-                    \\zzz_requests_by_status{{class="other"}} {d}
-                    \\# HELP zzz_requests_by_method HTTP requests by method.
-                    \\# TYPE zzz_requests_by_method counter
-                    \\zzz_requests_by_method{{method="GET"}} {d}
-                    \\zzz_requests_by_method{{method="HEAD"}} {d}
-                    \\zzz_requests_by_method{{method="POST"}} {d}
-                    \\zzz_requests_by_method{{method="PUT"}} {d}
-                    \\zzz_requests_by_method{{method="DELETE"}} {d}
-                    \\zzz_requests_by_method{{method="PATCH"}} {d}
-                    \\zzz_requests_by_method{{method="OPTIONS"}} {d}
-                    \\zzz_requests_by_method{{method="CONNECT"}} {d}
-                    \\zzz_requests_by_method{{method="TRACE"}} {d}
-                    \\# HELP zzz_request_duration_us_sum Sum of request durations in microseconds.
-                    \\# TYPE zzz_request_duration_us_sum counter
-                    \\zzz_request_duration_us_sum {d}
-                    \\# HELP zzz_request_duration_us_count Number of timed requests.
-                    \\# TYPE zzz_request_duration_us_count counter
-                    \\zzz_request_duration_us_count {d}
+                    \\# HELP pidgn_requests_total Total number of HTTP requests.
+                    \\# TYPE pidgn_requests_total counter
+                    \\pidgn_requests_total {d}
+                    \\# HELP pidgn_requests_by_status HTTP requests by status class.
+                    \\# TYPE pidgn_requests_by_status counter
+                    \\pidgn_requests_by_status{{class="1xx"}} {d}
+                    \\pidgn_requests_by_status{{class="2xx"}} {d}
+                    \\pidgn_requests_by_status{{class="3xx"}} {d}
+                    \\pidgn_requests_by_status{{class="4xx"}} {d}
+                    \\pidgn_requests_by_status{{class="5xx"}} {d}
+                    \\pidgn_requests_by_status{{class="other"}} {d}
+                    \\# HELP pidgn_requests_by_method HTTP requests by method.
+                    \\# TYPE pidgn_requests_by_method counter
+                    \\pidgn_requests_by_method{{method="GET"}} {d}
+                    \\pidgn_requests_by_method{{method="HEAD"}} {d}
+                    \\pidgn_requests_by_method{{method="POST"}} {d}
+                    \\pidgn_requests_by_method{{method="PUT"}} {d}
+                    \\pidgn_requests_by_method{{method="DELETE"}} {d}
+                    \\pidgn_requests_by_method{{method="PATCH"}} {d}
+                    \\pidgn_requests_by_method{{method="OPTIONS"}} {d}
+                    \\pidgn_requests_by_method{{method="CONNECT"}} {d}
+                    \\pidgn_requests_by_method{{method="TRACE"}} {d}
+                    \\# HELP pidgn_request_duration_us_sum Sum of request durations in microseconds.
+                    \\# TYPE pidgn_request_duration_us_sum counter
+                    \\pidgn_request_duration_us_sum {d}
+                    \\# HELP pidgn_request_duration_us_count Number of timed requests.
+                    \\# TYPE pidgn_request_duration_us_count counter
+                    \\pidgn_request_duration_us_count {d}
                     \\
                 , .{
                     req_count,
@@ -171,7 +171,7 @@ test "metrics serves at /metrics" {
     try handler(&ctx);
     try std.testing.expectEqual(StatusCode.ok, ctx.response.status);
     try std.testing.expect(ctx.response.body != null);
-    try std.testing.expect(std.mem.indexOf(u8, ctx.response.body.?, "zzz_requests_total") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ctx.response.body.?, "pidgn_requests_total") != null);
 }
 
 test "metrics increments counters" {
@@ -222,7 +222,7 @@ test "metrics increments counters" {
         try handler(&ctx);
         try std.testing.expect(ctx.response.body != null);
         // Should have at least 1 request counted
-        try std.testing.expect(std.mem.indexOf(u8, ctx.response.body.?, "zzz_requests_total") != null);
+        try std.testing.expect(std.mem.indexOf(u8, ctx.response.body.?, "pidgn_requests_total") != null);
     }
 }
 

@@ -5,7 +5,7 @@ const HandlerFn = @import("context.zig").HandlerFn;
 /// Configuration for the live reload middleware.
 pub const LiveReloadConfig = struct {
     /// WebSocket endpoint path.
-    endpoint: []const u8 = "/__zzz/live-reload",
+    endpoint: []const u8 = "/__pidgn/live-reload",
 };
 
 /// Client-side JavaScript that connects to the live-reload WebSocket.
@@ -17,7 +17,7 @@ const client_script =
     \\  var ws, reconnectDelay = 100, disconnectedAt = 0, reloadTimer = null;
     \\  function connect() {
     \\    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    \\    ws = new WebSocket(proto + '//' + location.host + '/__zzz/live-reload');
+    \\    ws = new WebSocket(proto + '//' + location.host + '/__pidgn/live-reload');
     \\    ws.onopen = function() {
     \\      if (disconnectedAt && (Date.now() - disconnectedAt) > 1000) {
     \\        location.reload();
@@ -87,7 +87,7 @@ pub fn liveReload(comptime config: LiveReloadConfig) HandlerFn {
 }
 
 /// WebSocket route handler for the live-reload endpoint.
-/// Use this with `zzz.Router.get("/__zzz/live-reload", liveReloadWs())`.
+/// Use this with `pidgn.Router.get("/__pidgn/live-reload", liveReloadWs())`.
 ///
 /// The WebSocket subscribes to the "__live_reload" PubSub topic.
 /// To trigger a reload, broadcast to this topic from your file watcher:

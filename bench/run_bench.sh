@@ -6,7 +6,7 @@ DURATION="${BENCH_DURATION:-10s}"
 THREADS="${BENCH_THREADS:-4}"
 CONNECTIONS="${BENCH_CONNECTIONS:-100}"
 HOST="${BENCH_HOST:-http://127.0.0.1:3000}"
-BACKEND="${BENCH_BACKEND:-zzz}"
+BACKEND="${BENCH_BACKEND:-pidgn}"
 MAX_WAIT=10  # seconds to wait for server
 
 # ── Detect benchmark tool ──────────────────────────────────────────────
@@ -42,7 +42,7 @@ lsof -ti:3000 | xargs kill -9 2>/dev/null || true
 sleep 0.5
 
 echo "Starting benchmark server on port 3000..."
-./zig-out/bin/zzz-bench &
+./zig-out/bin/pidgn-bench &
 SERVER_PID=$!
 
 # Ensure cleanup on exit
@@ -59,7 +59,7 @@ cleanup() {
         fi
         wait "$SERVER_PID" 2>/dev/null || true
     fi
-    rm -f /tmp/zzz-bench.db /tmp/zzz-bench.db-wal /tmp/zzz-bench.db-shm
+    rm -f /tmp/pidgn-bench.db /tmp/pidgn-bench.db-wal /tmp/pidgn-bench.db-shm
 }
 trap cleanup EXIT
 
@@ -108,7 +108,7 @@ echo "════════════════════════�
 # ── SQLite benchmark (no wrk/hey needed) ──────────────────────────────
 echo ""
 echo "Running SQLite benchmark..."
-./zig-out/bin/zzz-bench-sqlite
+./zig-out/bin/pidgn-bench-sqlite
 
 echo "═══════════════════════════════════════════════════════════════"
 echo "  All benchmarks complete."

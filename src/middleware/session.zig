@@ -6,7 +6,7 @@ const Assigns = @import("context.zig").Assigns;
 
 /// Session middleware configuration.
 pub const SessionConfig = struct {
-    cookie_name: []const u8 = "zzz_session",
+    cookie_name: []const u8 = "pidgn_session",
     max_age: i64 = 86400, // 1 day
     path: []const u8 = "/",
     http_only: bool = true,
@@ -236,7 +236,7 @@ test "session middleware sets session cookie on new request" {
     try std.testing.expectEqual(StatusCode.ok, resp.status);
     // Should have a Set-Cookie header with session
     const cookie_header = resp.headers.get("Set-Cookie").?;
-    try std.testing.expect(std.mem.startsWith(u8, cookie_header, "zzz_session="));
+    try std.testing.expect(std.mem.startsWith(u8, cookie_header, "pidgn_session="));
     // Body should be the 32-char hex session ID
     try std.testing.expectEqual(@as(usize, 32), resp.body.?.len);
 }

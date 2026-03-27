@@ -219,7 +219,7 @@ pub const Router = struct {
     ///
     /// Usage:
     /// ```
-    /// fn createUser(ctx: *zzz.Context, body: CreateUserRequest) !UserResponse {
+    /// fn createUser(ctx: *pidgn.Context, body: CreateUserRequest) !UserResponse {
     ///     _ = ctx;
     ///     return .{ .id = 1, .name = body.name };
     /// }

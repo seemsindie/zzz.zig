@@ -1,6 +1,6 @@
 const std = @import("std");
-const zzz = @import("zzz");
-const zzz_db = @import("zzz_db");
+const pidgn = @import("pidgn");
+const pidgn_db = @import("pidgn_db");
 
 // ── Schema ──────────────────────────────────────────────────────────────
 
@@ -11,7 +11,7 @@ const User = struct {
     inserted_at: i64 = 0,
     updated_at: i64 = 0,
 
-    pub const Meta = zzz_db.Schema.define(@This(), .{
+    pub const Meta = pidgn_db.Schema.define(@This(), .{
         .table = "users",
         .primary_key = "id",
         .timestamps = true,
@@ -20,46 +20,46 @@ const User = struct {
 
 // ── Module-level state ──────────────────────────────────────────────────
 
-var pool: zzz_db.SqlitePool = undefined;
-var repo: zzz_db.SqliteRepo = undefined;
+var pool: pidgn_db.SqlitePool = undefined;
+var repo: pidgn_db.SqliteRepo = undefined;
 var counter: std.atomic.Value(u64) = std.atomic.Value(u64).init(0);
 
 // ── Router ──────────────────────────────────────────────────────────────
 
-const App = zzz.Router.define(.{
+const App = pidgn.Router.define(.{
     .routes = &.{
-        zzz.Router.get("/plaintext", plaintextHandler),
-        zzz.Router.get("/json", jsonHandler),
-        zzz.Router.get("/users/:id", userHandler),
-        zzz.Router.get("/db", dbReadHandler),
-        zzz.Router.get("/db-insert", dbInsertHandler),
+        pidgn.Router.get("/plaintext", plaintextHandler),
+        pidgn.Router.get("/json", jsonHandler),
+        pidgn.Router.get("/users/:id", userHandler),
+        pidgn.Router.get("/db", dbReadHandler),
+        pidgn.Router.get("/db-insert", dbInsertHandler),
     },
 });
 
 // ── Handlers ────────────────────────────────────────────────────────────
 
-fn plaintextHandler(ctx: *zzz.Context) !void {
+fn plaintextHandler(ctx: *pidgn.Context) !void {
     ctx.text(.ok, "Hello, World!");
 }
 
-fn jsonHandler(ctx: *zzz.Context) !void {
+fn jsonHandler(ctx: *pidgn.Context) !void {
     ctx.json(.ok,
         \\{"message":"Hello, World!"}
     );
 }
 
-fn userHandler(ctx: *zzz.Context) !void {
+fn userHandler(ctx: *pidgn.Context) !void {
     const id = ctx.param("id") orelse "0";
     ctx.text(.ok, id);
 }
 
-fn dbReadHandler(ctx: *zzz.Context) !void {
+fn dbReadHandler(ctx: *pidgn.Context) !void {
     const n = counter.fetchAdd(1, .monotonic);
     const id: i64 = @intCast((n % 500) + 1);
 
     if (try repo.get(User, id, ctx.allocator)) |*u| {
         var user = u.*;
-        defer zzz_db.freeOne(User, &user, ctx.allocator);
+        defer pidgn_db.freeOne(User, &user, ctx.allocator);
 
         var buf: [256]u8 = undefined;
         const body = std.fmt.bufPrint(&buf,
@@ -79,7 +79,7 @@ fn dbReadHandler(ctx: *zzz.Context) !void {
     }
 }
 
-fn dbInsertHandler(ctx: *zzz.Context) !void {
+fn dbInsertHandler(ctx: *pidgn.Context) !void {
     const n = counter.fetchAdd(1, .monotonic);
 
     var name_buf: [32]u8 = undefined;
@@ -93,7 +93,7 @@ fn dbInsertHandler(ctx: *zzz.Context) !void {
         .name = name,
         .email = email,
     }, ctx.allocator);
-    defer zzz_db.freeOne(User, &user, ctx.allocator);
+    defer pidgn_db.freeOne(User, &user, ctx.allocator);
 
     var buf: [256]u8 = undefined;
     const body = std.fmt.bufPrint(&buf,
@@ -115,10 +115,10 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     // Initialize SQLite pool
-    pool = try zzz_db.SqlitePool.init(.{
+    pool = try pidgn_db.SqlitePool.init(.{
         .size = 4,
         .connection = .{
-            .database = "/tmp/zzz-bench.db",
+            .database = "/tmp/pidgn-bench.db",
             .enable_wal = true,
             .pragmas = &.{
                 "PRAGMA journal_mode = WAL",
@@ -156,7 +156,7 @@ pub fn main(init: std.process.Init) !void {
             var email_buf: [48]u8 = undefined;
             const email = std.fmt.bufPrint(&email_buf, "user_{d}@bench.test", .{i}) catch unreachable;
 
-            var stmt = try zzz_db.sqlite.ResultSet.query(
+            var stmt = try pidgn_db.sqlite.ResultSet.query(
                 &pc.conn.db,
                 "INSERT INTO users (name, email, inserted_at, updated_at) VALUES (?, ?, ?, ?)",
                 &.{ name, email, "0", "0" },
@@ -167,12 +167,12 @@ pub fn main(init: std.process.Init) !void {
         try pc.conn.exec("COMMIT");
     }
 
-    repo = zzz_db.SqliteRepo.init(&pool);
+    repo = pidgn_db.SqliteRepo.init(&pool);
 
     std.debug.print("Benchmark server ready on http://127.0.0.1:3000\n", .{});
     std.debug.print("  Endpoints: /plaintext, /json, /users/:id, /db, /db-insert\n", .{});
 
-    var server = zzz.Server.init(allocator, .{
+    var server = pidgn.Server.init(allocator, .{
         .host = "127.0.0.1",
         .port = 3000,
         .keepalive_timeout_ms = 5_000, // shorter for benchmarks

@@ -307,7 +307,7 @@ pub const Context = struct {
 
     /// Render a comptime-parsed template with data and send as HTML response.
     /// The template type must have a `render(allocator, data) ![]const u8` method,
-    /// as returned by `zzz.template()`.
+    /// as returned by `pidgn.template()`.
     pub fn render(self: *Context, comptime Tmpl: type, status: StatusCode, data: anytype) !void {
         const body = try Tmpl.render(self.allocator, data);
         self.response.status = status;

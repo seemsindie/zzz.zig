@@ -5,7 +5,7 @@ const std = @import("std");
 const testing = std.testing;
 
 // Re-export for refAllDecls
-pub const zzz_backend = @import("core/backends/zzz.zig");
+pub const pidgn_backend = @import("core/backends/pidgn.zig");
 
 fn sleepMs(ms: u32) void {
     const ts: std.c.timespec = .{
@@ -17,7 +17,7 @@ fn sleepMs(ms: u32) void {
 
 // ── BoundedQueue tests ──────────────────────────────────────────────
 
-const IntQueue = zzz_backend.BoundedQueue(u32);
+const IntQueue = pidgn_backend.BoundedQueue(u32);
 
 test "BoundedQueue: basic push and pop" {
     var q = try IntQueue.init(testing.allocator, 4);
@@ -166,7 +166,7 @@ test "BoundedQueue: multi-producer multi-consumer" {
 // ── Backend selection tests ─────────────────────────────────────────
 
 test "backend module: BackendConfig exists" {
-    const BC = zzz_backend.BackendConfig;
+    const BC = pidgn_backend.BackendConfig;
     const config: BC = .{};
     try testing.expectEqual(@as(u16, 0), config.pool_size);
     try testing.expectEqual(@as(u32, 1024), config.queue_capacity);

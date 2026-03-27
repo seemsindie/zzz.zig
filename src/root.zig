@@ -1,4 +1,4 @@
-//! Zzz - The Zig Web Framework That Never Sleeps
+//! Pidgn - The Zig Web Framework That Never Sleeps
 //!
 //! A Phoenix-inspired, batteries-included web framework written in Zig.
 //! Blazing fast, memory-safe, with compile-time route resolution.
@@ -106,9 +106,9 @@ pub const liveReload = @import("middleware/live_reload.zig").liveReload;
 pub const liveReloadWs = @import("middleware/live_reload.zig").liveReloadWs;
 pub const LiveReloadConfig = @import("middleware/live_reload.zig").LiveReloadConfig;
 
-// zzz.js Client Library
-pub const zzzJs = @import("middleware/zzz_js.zig").zzzJs;
-pub const ZzzJsConfig = @import("middleware/zzz_js.zig").ZzzJsConfig;
+// pidgn.js Client Library
+pub const pidgnJs = @import("middleware/pidgn_js.zig").pidgnJs;
+pub const PidgnJsConfig = @import("middleware/pidgn_js.zig").PidgnJsConfig;
 
 // SSR Bridge
 pub const SsrPool = @import("core/ssr.zig").SsrPool;

@@ -264,7 +264,7 @@ fn snakeToCapsSnake(comptime name: []const u8) []const u8 {
 /// need to import both modules separately.
 ///
 /// ```zig
-/// const result = try zzz.configInit(@TypeOf(app_config.config), app_config.config, allocator, .{});
+/// const result = try pidgn.configInit(@TypeOf(app_config.config), app_config.config, allocator, .{});
 /// defer result.env.deinit();
 /// const config = result.config;
 /// ```

@@ -191,7 +191,7 @@ fn getUniquePaths(comptime doc_routes: []const RouteDef) []const []const u8 {
     }
 }
 
-/// Convert zzz route pattern `:param` to OpenAPI pattern `{param}`.
+/// Convert pidgn route pattern `:param` to OpenAPI pattern `{param}`.
 fn convertPattern(comptime pattern: []const u8) []const u8 {
     comptime {
         var result: []const u8 = "";
@@ -214,7 +214,7 @@ fn convertPattern(comptime pattern: []const u8) []const u8 {
     }
 }
 
-/// Extract path parameters from a zzz pattern.
+/// Extract path parameters from a pidgn pattern.
 fn extractPathParams(comptime pattern: []const u8) []const []const u8 {
     comptime {
         var params: [16][]const u8 = undefined;

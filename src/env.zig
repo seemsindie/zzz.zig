@@ -506,7 +506,7 @@ test "init with path null loads nothing" {
 
 test "init with missing file is not an error" {
     const allocator = std.testing.allocator;
-    var env = try Env.init(allocator, .{ .path = "/tmp/zzz_nonexistent_env_file_test", .system_env = false });
+    var env = try Env.init(allocator, .{ .path = "/tmp/pidgn_nonexistent_env_file_test", .system_env = false });
     defer env.deinit();
     try std.testing.expect(env.entries.items.len == 0);
 }

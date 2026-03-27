@@ -9,12 +9,12 @@ const TestResponse = @import("response.zig").TestResponse;
 const CookieJar = @import("cookie_jar.zig").CookieJar;
 const request_builder = @import("request_builder.zig");
 
-/// HTTP test client for testing zzz applications without a real TCP connection.
+/// HTTP test client for testing pidgn applications without a real TCP connection.
 /// Generic over the App type (returned by `Router.define()`).
 ///
 /// Example:
 /// ```
-/// var client = zzz.testing.TestClient(App).init(std.testing.allocator);
+/// var client = pidgn.testing.TestClient(App).init(std.testing.allocator);
 /// defer client.deinit();
 /// const resp = try client.get("/");
 /// try resp.expectOk();

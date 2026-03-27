@@ -1,11 +1,11 @@
-# Contributing to zzz
+# Contributing to pidgn
 
 ## Setup
 
-zzz.zig lives inside a workspace with its sibling packages (`zzz_db`, `zzz_jobs`, `zzz_mailer`, `zzz_template`, `zzz_example_app`, `zzz_website`). Clone the whole workspace, not just this repo:
+pidgn lives inside a workspace with its sibling packages (`pidgn_db`, `pidgn_jobs`, `pidgn_mailer`, `pidgn_template`, `pidgn_example_app`, `pidgn_website`). Clone the whole workspace, not just this repo:
 
 ```bash
-git clone https://github.com/zzz-web/zigweb_workspace.git
+git clone https://github.com/pidgn-web/zigweb_workspace.git
 cd zigweb_workspace
 ./setup          # clones all packages, pins correct commits
 ```
@@ -33,7 +33,7 @@ Dependencies (SQLite, OpenSSL, libpq) are vendored — no system libraries neede
 
 ## Code Patterns
 
-These are zzz-specific conventions. Follow them in new code.
+These are pidgn-specific conventions. Follow them in new code.
 
 ### Fixed-size data structures
 
@@ -41,7 +41,7 @@ No heap allocations on hot paths. Use fixed-capacity buffers, ring buffers, and 
 
 ### Thread safety
 
-Use `std.atomic.Mutex` with `spinLock()` — not `std.Thread.Mutex`. The spin lock is appropriate for the short critical sections in zzz's I/O paths.
+Use `std.atomic.Mutex` with `spinLock()` — not `std.Thread.Mutex`. The spin lock is appropriate for the short critical sections in pidgn's I/O paths.
 
 ### Type-erased callbacks
 
@@ -60,14 +60,14 @@ Use `std.c` for syscalls, not `std.posix`. The `std.posix` namespace has macOS c
 Every module has inline tests at the bottom of the file. Run them:
 
 ```bash
-cd zzz.zig && zig build test   # ~281 tests
+cd pidgn && zig build test   # ~281 tests
 ```
 
 To run sibling package tests from the workspace root:
 
 ```bash
-cd zzz_db && zig build test    # SQLite tests
-cd zzz_jobs && zig build test  # Job processing tests
+cd pidgn_db && zig build test    # SQLite tests
+cd pidgn_jobs && zig build test  # Job processing tests
 ```
 
 Write tests for all new functionality. Tests go in the same file as the code they test, inside a `test` block at the bottom.
@@ -93,7 +93,7 @@ Write tests for all new functionality. Tests go in the same file as the code the
 Checklist before submitting:
 
 - [ ] New public types are exported from `src/root.zig`
-- [ ] Added usage example in `zzz_example_app` if applicable
+- [ ] Added usage example in `pidgn_example_app` if applicable
 - [ ] Updated `README.md` and `CHANGELOG.md`
 - [ ] All tests pass: `zig build test`
 - [ ] Push, then propagate hashes to downstream packages with `zpush`

@@ -7,7 +7,7 @@ const server_mod = @import("../server.zig");
 const Server = server_mod.Server;
 const Config = server_mod.Config;
 
-/// Backend-specific configuration for the native zzz backend.
+/// Backend-specific configuration for the native pidgn backend.
 pub const BackendConfig = struct {
     /// Number of worker threads. 0 = auto-detect CPU count.
     pool_size: u16 = 0,
@@ -105,7 +105,7 @@ const Connection = struct {
 
 const ConnectionQueue = BoundedQueue(Connection);
 
-/// Main entry point for the native zzz backend.
+/// Main entry point for the native pidgn backend.
 /// Uses a bounded queue and a fixed thread pool to serve connections.
 pub fn listen(server: *Server, io: Io) !void {
     const config = server.config;
@@ -122,7 +122,7 @@ pub fn listen(server: *Server, io: Io) !void {
     defer tcp_server.deinit(io);
 
     const scheme = "http";
-    std.log.info("Zzz server listening on {s}://{s}:{d} (backend=zzz, workers={d})", .{
+    std.log.info("Pidgn server listening on {s}://{s}:{d} (backend=pidgn, workers={d})", .{
         scheme,
         config.host,
         config.port,

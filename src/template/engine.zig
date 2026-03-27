@@ -1,10 +1,10 @@
-//! Re-export from zzz_template package.
+//! Re-export from pidgn_template package.
 //! This wrapper preserves the `@import("template/engine.zig")` paths used
-//! throughout zzz (context.zig, test_template.zig, root.zig).
+//! throughout pidgn (context.zig, test_template.zig, root.zig).
 
-const zzz_template = @import("zzz_template");
+const pidgn_template = @import("pidgn_template");
 
-pub const Segment = zzz_template.Segment;
-pub const parse = zzz_template.parse;
-pub const template = zzz_template.template;
-pub const templateWithPartials = zzz_template.templateWithPartials;
+pub const Segment = pidgn_template.Segment;
+pub const parse = pidgn_template.parse;
+pub const template = pidgn_template.template;
+pub const templateWithPartials = pidgn_template.templateWithPartials;

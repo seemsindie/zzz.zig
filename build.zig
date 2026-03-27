@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const tls_enabled = b.option(bool, "tls", "Enable TLS/HTTPS support (requires OpenSSL)") orelse false;
-    const backend = b.option([]const u8, "backend", "Server backend: \"zzz\" (default) or \"libhv\"") orelse "zzz";
+    const backend = b.option([]const u8, "backend", "Server backend: \"pidgn\" (default) or \"libhv\"") orelse "pidgn";
 
     // Create a module for the TLS build option so server.zig can query it at comptime
     const tls_options = b.addOptions();
@@ -20,18 +20,18 @@ pub fn build(b: *std.Build) void {
     const backend_options = b.addOptions();
     backend_options.addOption([]const u8, "backend", backend);
 
-    const zzz_template_dep = b.dependency("zzz_template", .{
+    const pidgn_template_dep = b.dependency("pidgn_template", .{
         .target = target,
         .optimize = optimize,
     });
 
-    const mod = b.addModule("zzz", .{
+    const mod = b.addModule("pidgn", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
 
-    // Add zzz_template module
-    mod.addImport("zzz_template", zzz_template_dep.module("zzz_template"));
+    // Add pidgn_template module
+    mod.addImport("pidgn_template", pidgn_template_dep.module("pidgn_template"));
 
     // Add TLS options module
     mod.addImport("tls_options", tls_options.createModule());
@@ -148,13 +148,13 @@ pub fn build(b: *std.Build) void {
     }
 
     const exe = b.addExecutable(.{
-        .name = "zzz",
+        .name = "pidgn",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "zzz", .module = mod },
+                .{ .name = "pidgn", .module = mod },
             },
         }),
     });
@@ -170,33 +170,33 @@ pub fn build(b: *std.Build) void {
         run_cmd.addArgs(args);
     }
 
-    // ── Shared zzz_db module for benchmarks ────────────────────────────
+    // ── Shared pidgn_db module for benchmarks ────────────────────────────
     const db_options = b.addOptions();
     db_options.addOption(bool, "sqlite_enabled", true);
     db_options.addOption(bool, "postgres_enabled", false);
 
-    const zzz_db_mod = b.createModule(.{
-        .root_source_file = .{ .cwd_relative = "../zzz_db/src/root.zig" },
+    const pidgn_db_mod = b.createModule(.{
+        .root_source_file = .{ .cwd_relative = "../pidgn_db/src/root.zig" },
         .target = target,
     });
-    zzz_db_mod.addImport("db_options", db_options.createModule());
-    zzz_db_mod.addCSourceFiles(.{
-        .files = &.{"../zzz_db/vendor/sqlite3/sqlite3.c"},
+    pidgn_db_mod.addImport("db_options", db_options.createModule());
+    pidgn_db_mod.addCSourceFiles(.{
+        .files = &.{"../pidgn_db/vendor/sqlite3/sqlite3.c"},
         .flags = &.{"-DSQLITE_THREADSAFE=1"},
     });
-    zzz_db_mod.addIncludePath(.{ .cwd_relative = "../zzz_db/vendor/sqlite3" });
-    zzz_db_mod.link_libc = true;
+    pidgn_db_mod.addIncludePath(.{ .cwd_relative = "../pidgn_db/vendor/sqlite3" });
+    pidgn_db_mod.link_libc = true;
 
     // ── Benchmark server ────────────────────────────────────────────────
     const bench_exe = b.addExecutable(.{
-        .name = "zzz-bench",
+        .name = "pidgn-bench",
         .root_module = b.createModule(.{
             .root_source_file = b.path("bench/bench_server.zig"),
             .target = target,
             .optimize = .ReleaseFast,
             .imports = &.{
-                .{ .name = "zzz", .module = mod },
-                .{ .name = "zzz_db", .module = zzz_db_mod },
+                .{ .name = "pidgn", .module = mod },
+                .{ .name = "pidgn_db", .module = pidgn_db_mod },
             },
         }),
     });
@@ -207,13 +207,13 @@ pub fn build(b: *std.Build) void {
 
     // ── SQLite benchmark (standalone) ───────────────────────────────────
     const bench_sqlite_exe = b.addExecutable(.{
-        .name = "zzz-bench-sqlite",
+        .name = "pidgn-bench-sqlite",
         .root_module = b.createModule(.{
             .root_source_file = b.path("bench/bench_sqlite.zig"),
             .target = target,
             .optimize = .ReleaseFast,
             .imports = &.{
-                .{ .name = "zzz_db", .module = zzz_db_mod },
+                .{ .name = "pidgn_db", .module = pidgn_db_mod },
             },
         }),
     });
@@ -256,10 +256,10 @@ pub fn build(b: *std.Build) void {
         });
         t.root_module.link_libc = true;
 
-        // All tests transitively import template/engine.zig which re-exports from zzz_template
-        t.root_module.addImport("zzz_template", zzz_template_dep.module("zzz_template"));
+        // All tests transitively import template/engine.zig which re-exports from pidgn_template
+        t.root_module.addImport("pidgn_template", pidgn_template_dep.module("pidgn_template"));
 
-        // Backend tests need the same options modules as the main zzz module
+        // Backend tests need the same options modules as the main pidgn module
         if (comptime std.mem.eql(u8, name, "test-backend")) {
             t.root_module.addImport("tls_options", tls_options.createModule());
             t.root_module.addImport("backend_options", backend_options.createModule());
@@ -327,7 +327,7 @@ pub fn build(b: *std.Build) void {
         named_step.dependOn(&run_t.step);
     }
 
-    // exe_tests (main.zig — imports zzz module)
+    // exe_tests (main.zig — imports pidgn module)
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,
     });

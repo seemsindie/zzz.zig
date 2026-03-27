@@ -1,5 +1,5 @@
 const std = @import("std");
-const zzz_db = @import("zzz_db");
+const pidgn_db = @import("pidgn_db");
 
 const c = @cImport({
     @cInclude("time.h");
@@ -15,7 +15,7 @@ const User = struct {
     inserted_at: i64 = 0,
     updated_at: i64 = 0,
 
-    pub const Meta = zzz_db.Schema.define(@This(), .{
+    pub const Meta = pidgn_db.Schema.define(@This(), .{
         .table = "users",
         .primary_key = "id",
         .timestamps = true,
@@ -52,7 +52,7 @@ fn getEnvInt(name: [*:0]const u8, default: usize) usize {
 
 // ── Benchmarks ─────────────────────────────────────────────────────────
 
-fn benchInsert(repo: *zzz_db.SqliteRepo, allocator: std.mem.Allocator, n: usize) !f64 {
+fn benchInsert(repo: *pidgn_db.SqliteRepo, allocator: std.mem.Allocator, n: usize) !f64 {
     const start = clockNs();
     for (0..n) |i| {
         var name_buf: [32]u8 = undefined;
@@ -68,12 +68,12 @@ fn benchInsert(repo: *zzz_db.SqliteRepo, allocator: std.mem.Allocator, n: usize)
             .inserted_at = timestamp(),
             .updated_at = timestamp(),
         }, allocator);
-        zzz_db.freeOne(User, &user, allocator);
+        pidgn_db.freeOne(User, &user, allocator);
     }
     return elapsedMs(start);
 }
 
-fn benchInsertBatch(pool: *zzz_db.SqlitePool, n: usize) !f64 {
+fn benchInsertBatch(pool: *pidgn_db.SqlitePool, n: usize) !f64 {
     var pc = try pool.checkout();
     defer pc.release();
 
@@ -86,7 +86,7 @@ fn benchInsertBatch(pool: *zzz_db.SqlitePool, n: usize) !f64 {
         var email_buf: [48]u8 = undefined;
         const email_len = std.fmt.bufPrint(&email_buf, "batch_{d}@bench.test", .{i}) catch unreachable;
 
-        var stmt = try zzz_db.sqlite.ResultSet.query(
+        var stmt = try pidgn_db.sqlite.ResultSet.query(
             &pc.conn.db,
             "INSERT INTO users (name, email, inserted_at, updated_at) VALUES (?, ?, ?, ?)",
             &.{ name_len, email_len, "0", "0" },
@@ -98,41 +98,41 @@ fn benchInsertBatch(pool: *zzz_db.SqlitePool, n: usize) !f64 {
     return elapsedMs(start);
 }
 
-fn benchSelectAll(repo: *zzz_db.SqliteRepo, allocator: std.mem.Allocator, iterations: usize) !f64 {
-    const q = zzz_db.Query(User).init().limit(100);
+fn benchSelectAll(repo: *pidgn_db.SqliteRepo, allocator: std.mem.Allocator, iterations: usize) !f64 {
+    const q = pidgn_db.Query(User).init().limit(100);
     const start = clockNs();
     for (0..iterations) |_| {
         const users = try repo.all(User, q, allocator);
-        zzz_db.freeAll(User, users, allocator);
+        pidgn_db.freeAll(User, users, allocator);
     }
     return elapsedMs(start);
 }
 
-fn benchSelectOne(repo: *zzz_db.SqliteRepo, allocator: std.mem.Allocator, iterations: usize) !f64 {
+fn benchSelectOne(repo: *pidgn_db.SqliteRepo, allocator: std.mem.Allocator, iterations: usize) !f64 {
     const start = clockNs();
     for (0..iterations) |_| {
         if (try repo.get(User, 1, allocator)) |*u| {
             var user = u.*;
-            zzz_db.freeOne(User, &user, allocator);
+            pidgn_db.freeOne(User, &user, allocator);
         }
     }
     return elapsedMs(start);
 }
 
-fn benchSelectWhere(repo: *zzz_db.SqliteRepo, allocator: std.mem.Allocator, iterations: usize) !f64 {
-    const q = zzz_db.Query(User).init().where("name", .eq, "user_50").limit(1);
+fn benchSelectWhere(repo: *pidgn_db.SqliteRepo, allocator: std.mem.Allocator, iterations: usize) !f64 {
+    const q = pidgn_db.Query(User).init().where("name", .eq, "user_50").limit(1);
     const start = clockNs();
     for (0..iterations) |_| {
         if (try repo.one(User, q, allocator)) |*u| {
             var user = u.*;
-            zzz_db.freeOne(User, &user, allocator);
+            pidgn_db.freeOne(User, &user, allocator);
         }
     }
     return elapsedMs(start);
 }
 
-fn benchCount(repo: *zzz_db.SqliteRepo, allocator: std.mem.Allocator, iterations: usize) !f64 {
-    const q = zzz_db.Query(User).init();
+fn benchCount(repo: *pidgn_db.SqliteRepo, allocator: std.mem.Allocator, iterations: usize) !f64 {
+    const q = pidgn_db.Query(User).init();
     const start = clockNs();
     for (0..iterations) |_| {
         _ = try repo.count(User, q, allocator);
@@ -152,12 +152,12 @@ pub fn main() !void {
 
     std.debug.print("\n", .{});
     std.debug.print("═══════════════════════════════════════════════════════════════\n", .{});
-    std.debug.print("  SQLite Benchmark (zzz_db)\n", .{});
+    std.debug.print("  SQLite Benchmark (pidgn_db)\n", .{});
     std.debug.print("═══════════════════════════════════════════════════════════════\n", .{});
     std.debug.print("  Insert count: {d} | Select iterations: {d}\n", .{ insert_n, select_n });
     std.debug.print("───────────────────────────────────────────────────────────────\n", .{});
 
-    var pool = try zzz_db.SqlitePool.init(.{
+    var pool = try pidgn_db.SqlitePool.init(.{
         .size = 1,
         .connection = .{
             .database = ":memory:",
@@ -186,7 +186,7 @@ pub fn main() !void {
         try pc.conn.exec("CREATE INDEX idx_users_name ON users (name)");
     }
 
-    var repo = zzz_db.SqliteRepo.init(&pool);
+    var repo = pidgn_db.SqliteRepo.init(&pool);
 
     // 1. Individual inserts via Repo
     const t1 = try benchInsert(&repo, allocator, insert_n);
