@@ -1,4 +1,4 @@
-# zzz Framework — Release TODO
+# pidgn Framework — Release TODO
 
 ## Completed Phases
 
@@ -50,7 +50,7 @@
   - [x] Health check
   - [x] htmx
   - [x] Channel middleware
-  - [x] zzz.js middleware
+  - [x] pidgn.js middleware
 
 ### Phase 3: Templates — 35/41
 - [x] Comptime template compilation
@@ -93,13 +93,13 @@
 - [x] Join authorization
 - [x] Wildcard topic patterns (`prefix:*`)
 - [x] Wire protocol (JSON events)
-- [x] zzz.js JavaScript client (connect, channels, presence, auto-reconnect)
+- [x] pidgn.js JavaScript client (connect, channels, presence, auto-reconnect)
 - [x] WebSocket test client
 - [x] Channel rate limiting (token bucket, per-socket message throttling)
 - [ ] Distributed PubSub (Redis adapter)
 - [ ] Multi-node presence sync
 
-### Phase 5: Database (zzz_db) — 52/52
+### Phase 5: Database (pidgn_db) — 52/52
 - [x] SQLite backend (vendored amalgamation)
 - [x] PostgreSQL backend (libpq)
 - [x] Schema definition (comptime structs)
@@ -116,7 +116,7 @@
 - [x] Aggregate functions
 - [x] DatabaseUrl parsing
 
-### Phase 6: Background Jobs (zzz_jobs) — 27/27
+### Phase 6: Background Jobs (pidgn_jobs) — 27/27
 - [x] Job definition and enqueueing
 - [x] Supervisor/worker architecture
 - [x] Memory store
@@ -148,33 +148,33 @@
 - [x] Multipart file upload testing
 - [x] WebSocket test client (TestChannel)
 - [x] Database test sandbox
-- [x] CLI: `zzz new` (project scaffolding)
-- [x] CLI: `zzz server` (dev server with file watching)
-- [x] CLI: `zzz gen controller/model/channel/mailer`
-- [x] CLI: `zzz migrate` (up/rollback/status)
-- [x] CLI: `zzz routes` (route listing)
-- [x] CLI: `zzz test`
-- [x] CLI: `zzz swagger`
-- [x] CLI: `zzz assets setup` (scaffold asset directory)
-- [x] CLI: `zzz assets build` (bundle, minify, fingerprint)
+- [x] CLI: `pidgn new` (project scaffolding)
+- [x] CLI: `pidgn server` (dev server with file watching)
+- [x] CLI: `pidgn gen controller/model/channel/mailer`
+- [x] CLI: `pidgn migrate` (up/rollback/status)
+- [x] CLI: `pidgn routes` (route listing)
+- [x] CLI: `pidgn test`
+- [x] CLI: `pidgn swagger`
+- [x] CLI: `pidgn assets setup` (scaffold asset directory)
+- [x] CLI: `pidgn assets build` (bundle, minify, fingerprint)
 
 ### Phase 9: Release Prep (v0.1.0) — 34/37
-- [x] Documentation site (zzz_docs — 69 pages, Astro/Starlight)
+- [x] Documentation site (pidgn_docs — 69 pages, Astro/Starlight)
 - [x] All doc pages filled with real content
-- [x] CHANGELOG.md in zzz.zig, zzz_db, zzz_jobs, zzz_cli
+- [x] CHANGELOG.md in pidgn.zig, pidgn_db, pidgn_jobs, pidgn_cli
 - [x] LICENSE in all packages
 - [x] GitHub Actions CI in all packages (ubuntu + macos matrix)
 - [x] Release workflows (release.yml)
-- [x] Homebrew tap (homebrew-zzz)
+- [x] Homebrew tap (homebrew-pidgn)
 - [x] CLI install script (curl | sh)
 - [x] GitHub Releases with pre-built binaries
-- [x] VSCode extension (zzz_vscode — syntax highlighting for .zzz templates)
-- [x] Marketing website (zzz_website — built with zzz itself)
-- [x] Example app (zzz_example_app)
+- [x] VSCode extension (pidgn_vscode — syntax highlighting for .pidgn templates)
+- [x] Marketing website (pidgn_website — built with pidgn itself)
+- [x] Example app (pidgn_example_app)
 - [x] build.zig.zon with version 0.1.0 and fingerprint
 - [x] README.md in all packages
 - [x] .github/ISSUE_TEMPLATE and PULL_REQUEST_TEMPLATE
-- [x] zzz_mailer CHANGELOG.md
+- [x] pidgn_mailer CHANGELOG.md
 - [x] Zig package index — N/A (URL-based, build.zig.zon already configured)
 - [ ] Getting Started video / screencast
 
@@ -186,12 +186,12 @@
 - [x] mergeWithEnv for config structs
 - [x] configInit convenience
 - [x] maskSensitive for logging
-- [x] Docker scaffolding in `zzz new`
+- [x] Docker scaffolding in `pidgn new`
 - [x] -Denv build flag
 
 ### Phase 11: Backend Abstraction — 23/33
 - [x] Backend trait/interface abstraction (backend.zig)
-- [x] zzz native backend (thread pool + bounded queue, POSIX mutexes)
+- [x] pidgn native backend (thread pool + bounded queue, POSIX mutexes)
 - [x] libhv backend (event-loop, epoll/kqueue/IOCP via libhv)
 - [x] Compile-time backend selection (-Dbackend=)
 - [x] Server.Config with backend-specific options
@@ -216,7 +216,7 @@
 - [x] Cache middleware (response caching with `X-Cache` headers)
 - [x] Asset pipeline (CSS/JS bundling via Bun)
 - [x] Asset fingerprinting / cache busting (FNV-1a hash, manifest JSON)
-- [x] Asset precompilation (`zzz assets build`)
+- [x] Asset precompilation (`pidgn assets build`)
 - [x] Server-Sent Events (SSE) with SseWriter
 - [x] ETag generation middleware (static files ETag support)
 - [x] Conditional GET (304 responses via If-None-Match)
@@ -252,7 +252,7 @@
 
 ### Phase 13: Operations — 0/22
 - [ ] Telemetry dashboard (web UI for metrics)
-- [ ] `zzz release` CLI command (build + package)
+- [ ] `pidgn release` CLI command (build + package)
 - [ ] Deploy targets (fly.io, Railway, Docker registry)
 - [ ] Health check dashboard
 - [ ] Log aggregation integration
@@ -341,7 +341,7 @@
 ### v0.1.0 Blockers (must-have)
 1. ~~Documentation site~~ — Done
 2. ~~Vendored build~~ — Done
-3. ~~zzz_mailer CHANGELOG.md~~ — Done
+3. ~~pidgn_mailer CHANGELOG.md~~ — Done
 4. ~~Zig package index~~ — N/A (Zig uses URL-based deps, build.zig.zon already configured)
 
 ### v0.1.0 Nice-to-have
@@ -356,7 +356,7 @@
 ### Build & Deploy — 4/7
 - [x] libpq fork with Zig/clang compatibility patches (seemsindie/libpq)
 - [x] zstd fork with correct sub-dependency hash (seemsindie/zstd)
-- [x] Dockerfile: Debian glibc builder + runtime (zzz_website)
+- [x] Dockerfile: Debian glibc builder + runtime (pidgn_website)
 - [x] Coolify auto-deploy from main branch
 - [ ] CI: cross-repo integration tests (push to dep triggers downstream build)
 - [ ] Monorepo migration (single repo with Zig workspace or path deps)
@@ -374,6 +374,6 @@
 - libpq requires `-Wno-incompatible-pointer-types-discards-qualifiers` and `-fno-sanitize=undefined` for Zig's clang
 - `@cImport` of libpq headers needs `@cUndef("_FORTIFY_SOURCE")` on glibc targets
 - openssl-zig is on a detached HEAD (patched fork of kassane/openssl-zig zig-pkg branch)
-- zzz_jobs and zzz_example_app still point to older zzz_db commits (pre-libpq fork)
-- zzz_mailer tests fail at runtime (SMTP connection) — pre-existing, not build-related
+- pidgn_jobs and pidgn_example_app still point to older pidgn_db commits (pre-libpq fork)
+- pidgn_mailer tests fail at runtime (SMTP connection) — pre-existing, not build-related
 - Version strings inconsistent across packages: build.zig.zon, src/root.zig, CHANGELOG.md often diverge — use `zrelease` to keep in sync
