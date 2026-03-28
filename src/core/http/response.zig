@@ -122,7 +122,7 @@ pub const Response = struct {
         }
 
         // Server header
-        try buf.appendSlice(allocator, "Server: Zzz/0.1.0\r\n");
+        try buf.appendSlice(allocator, "Server: Pidgn/0.3.0\r\n");
 
         // User headers
         for (self.headers.entries.items) |entry| {

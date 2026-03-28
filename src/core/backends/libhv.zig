@@ -177,7 +177,7 @@ pub fn listen(server: *Server, io: Io) !void {
     }
 
     const scheme = if (use_tls) "https" else "http";
-    std.log.info("Zzz server listening on {s}://{s}:{d} (backend=libhv)", .{
+    std.log.info("Pidgn server listening on {s}://{s}:{d} (backend=libhv)", .{
         scheme,
         config.host,
         config.port,

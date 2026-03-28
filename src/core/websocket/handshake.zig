@@ -67,7 +67,7 @@ pub fn buildUpgradeResponse(allocator: Allocator, request: *const Request) !Upgr
     if (deflate) {
         try buf.appendSlice(allocator, "Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover\r\n");
     }
-    try buf.appendSlice(allocator, "Server: Zzz/0.1.0\r\n");
+    try buf.appendSlice(allocator, "Server: Pidgn/0.3.0\r\n");
     try buf.appendSlice(allocator, "\r\n");
 
     return .{

@@ -312,7 +312,7 @@ Pidgn supports three rendering modes — pick what fits your app:
 |----------|----------|-------------|
 | **htmx + Templates** (default) | Interactive server-rendered apps | Full pages on first load, HTML fragments on htmx requests. Like Phoenix LiveView but simpler. |
 | **Templates only** | Classic MVC sites, blogs, admin panels | Server renders full HTML every request. No JS required. |
-| **API + SPA** | React/Vue/Svelte frontends | Zzz serves JSON API + optional SSR via Node/Deno/Bun subprocess. |
+| **API + SPA** | React/Vue/Svelte frontends | Pidgn serves JSON API + optional SSR via Node/Deno/Bun subprocess. |
 
 #### 3.1 Template Syntax (Handlebars-inspired with Zig power)
 ```html

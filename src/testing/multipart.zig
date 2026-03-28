@@ -19,7 +19,7 @@ pub const MultipartBody = struct {
 /// Build a multipart/form-data body from parts.
 /// The caller owns the returned slices and must free them with the same allocator.
 pub fn buildMultipartBody(allocator: Allocator, parts: []const MultipartPart) !MultipartBody {
-    const boundary = "----ZzzTestBoundary7MA4YWxkTrZu0gW";
+    const boundary = "----PidgnTestBoundary7MA4YWxkTrZu0gW";
     const content_type = "multipart/form-data; boundary=" ++ boundary;
 
     var buf: std.ArrayList(u8) = .empty;
@@ -112,5 +112,5 @@ test "buildMultipartBody mixed fields" {
     try std.testing.expect(std.mem.indexOf(u8, result.body, "a photo") != null);
     try std.testing.expect(std.mem.indexOf(u8, result.body, "filename=\"a.jpg\"") != null);
     // Ends with final boundary
-    try std.testing.expect(std.mem.endsWith(u8, result.body, "----ZzzTestBoundary7MA4YWxkTrZu0gW--\r\n"));
+    try std.testing.expect(std.mem.endsWith(u8, result.body, "----PidgnTestBoundary7MA4YWxkTrZu0gW--\r\n"));
 }
