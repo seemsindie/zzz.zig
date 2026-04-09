@@ -14,17 +14,12 @@ pub const LiveReloadConfig = struct {
 const client_script =
     \\<script>
     \\(function() {
-    \\  var ws, reconnectDelay = 100, disconnectedAt = 0, reloadTimer = null;
+    \\  var ws, reconnectDelay = 200, disconnectedAt = 0;
     \\  function connect() {
-    \\    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    \\    ws = new WebSocket(proto + '//' + location.host + '/__pidgn/live-reload');
+    \\    try { ws = new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/__pidgn/live-reload'); } catch(_) { retry(); return; }
     \\    ws.onopen = function() {
-    \\      if (disconnectedAt && (Date.now() - disconnectedAt) > 1000) {
-    \\        location.reload();
-    \\        return;
-    \\      }
-    \\      disconnectedAt = 0;
-    \\      reconnectDelay = 100;
+    \\      if (disconnectedAt) { location.reload(); return; }
+    \\      reconnectDelay = 200;
     \\    };
     \\    ws.onmessage = function(e) {
     \\      try { var msg = JSON.parse(e.data); } catch(_) { return; }
@@ -33,17 +28,15 @@ const client_script =
     \\          var href = link.href.replace(/(\?|&)_lr=\d+/, '');
     \\          link.href = href + (href.indexOf('?') > -1 ? '&' : '?') + '_lr=' + Date.now();
     \\        });
-    \\      } else if (msg.type === 'reload') {
-    \\        clearTimeout(reloadTimer);
-    \\        reloadTimer = setTimeout(function() { location.reload(); }, 50);
-    \\      }
+    \\      } else if (msg.type === 'reload') { location.reload(); }
     \\    };
+    \\    ws.onerror = function() {};
     \\    ws.onclose = function() {
     \\      if (!disconnectedAt) disconnectedAt = Date.now();
-    \\      reconnectDelay = Math.min(reconnectDelay * 2, 5000);
-    \\      setTimeout(connect, reconnectDelay);
+    \\      retry();
     \\    };
     \\  }
+    \\  function retry() { reconnectDelay = Math.min(reconnectDelay * 1.5, 2000); setTimeout(connect, reconnectDelay); }
     \\  connect();
     \\})();
     \\</script>
