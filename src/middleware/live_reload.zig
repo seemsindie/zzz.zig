@@ -2,6 +2,7 @@ const std = @import("std");
 const Context = @import("context.zig").Context;
 const HandlerFn = @import("context.zig").HandlerFn;
 
+
 /// Configuration for the live reload middleware.
 pub const LiveReloadConfig = struct {
     /// WebSocket endpoint path.
@@ -14,30 +15,22 @@ pub const LiveReloadConfig = struct {
 const client_script =
     \\<script>
     \\(function() {
-    \\  var ws, reconnectDelay = 200, disconnectedAt = 0;
-    \\  function connect() {
-    \\    try { ws = new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/__pidgn/live-reload'); } catch(_) { retry(); return; }
-    \\    ws.onopen = function() {
-    \\      if (disconnectedAt) { location.reload(); return; }
-    \\      reconnectDelay = 200;
-    \\    };
-    \\    ws.onmessage = function(e) {
-    \\      try { var msg = JSON.parse(e.data); } catch(_) { return; }
-    \\      if (msg.type === 'css') {
-    \\        document.querySelectorAll('link[rel="stylesheet"]').forEach(function(link) {
-    \\          var href = link.href.replace(/(\?|&)_lr=\d+/, '');
-    \\          link.href = href + (href.indexOf('?') > -1 ? '&' : '?') + '_lr=' + Date.now();
-    \\        });
-    \\      } else if (msg.type === 'reload') { location.reload(); }
-    \\    };
-    \\    ws.onerror = function() {};
-    \\    ws.onclose = function() {
-    \\      if (!disconnectedAt) disconnectedAt = Date.now();
-    \\      retry();
-    \\    };
+    \\  var alive = true;
+    \\  function check() {
+    \\    var c = new AbortController();
+    \\    var t = setTimeout(function() { c.abort(); }, 1500);
+    \\    fetch(location.href, {method:'HEAD',cache:'no-store',signal:c.signal}).then(function(r) {
+    \\      clearTimeout(t);
+    \\      if (!r.ok) throw new Error();
+    \\      if (!alive) { location.reload(); return; }
+    \\      setTimeout(check, 300);
+    \\    }).catch(function() {
+    \\      clearTimeout(t);
+    \\      alive = false;
+    \\      setTimeout(check, 300);
+    \\    });
     \\  }
-    \\  function retry() { reconnectDelay = Math.min(reconnectDelay * 1.5, 2000); setTimeout(connect, reconnectDelay); }
-    \\  connect();
+    \\  setTimeout(check, 300);
     \\})();
     \\</script>
 ;
