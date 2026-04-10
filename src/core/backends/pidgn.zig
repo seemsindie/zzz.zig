@@ -141,8 +141,19 @@ pub fn listen(server: *Server, io: Io) !void {
         workers[i] = try std.Thread.spawn(.{}, workerThread, .{ server, &queue });
     }
 
-    // Accept loop
+    // Accept loop — use poll to check for new connections with a timeout
+    // so we can check the shutdown flag periodically.
     while (!server.shutdown_flag.load(.acquire)) {
+        // Poll the listening socket with 500ms timeout
+        var pfds = [1]std.posix.pollfd{.{
+            .fd = tcp_server.socket.handle,
+            .events = std.posix.POLL.IN,
+            .revents = 0,
+        }};
+        const poll_n = std.posix.poll(&pfds, 500) catch break;
+        if (poll_n == 0) continue; // timeout, loop back to check shutdown
+        if (server.shutdown_flag.load(.acquire)) break;
+
         var stream = tcp_server.accept(io) catch |err| {
             if (server.shutdown_flag.load(.acquire)) break;
             std.log.warn("accept error: {}", .{err});

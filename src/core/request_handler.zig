@@ -14,14 +14,23 @@ const Config = server_mod.Config;
 
 /// Poll a socket for readability with a timeout (milliseconds).
 /// Returns true if data is available, false on timeout or error.
-fn pollReadable(fd: std.posix.fd_t, timeout_ms: i32) bool {
-    var pfds = [1]std.posix.pollfd{.{
-        .fd = fd,
-        .events = std.posix.POLL.IN,
-        .revents = 0,
-    }};
-    const n = std.posix.poll(&pfds, timeout_ms) catch return false;
-    return n > 0;
+/// Checks the shutdown flag every 500ms so the server can exit promptly.
+fn pollReadable(fd: std.posix.fd_t, timeout_ms: i32, shutdown_flag: *const std.atomic.Value(bool)) bool {
+    const chunk: i32 = 500; // check shutdown every 500ms
+    var remaining: i32 = timeout_ms;
+    while (remaining > 0) {
+        if (shutdown_flag.load(.acquire)) return false;
+        const wait = if (remaining < chunk) remaining else chunk;
+        var pfds = [1]std.posix.pollfd{.{
+            .fd = fd,
+            .events = std.posix.POLL.IN,
+            .revents = 0,
+        }};
+        const n = std.posix.poll(&pfds, wait) catch return false;
+        if (n > 0) return true;
+        remaining -= wait;
+    }
+    return false;
 }
 
 /// Handle the HTTP request/response loop over a reader/writer pair.
@@ -47,7 +56,7 @@ pub fn handleRequests(
             @intCast(config.read_timeout_ms)
         else
             @intCast(config.keepalive_timeout_ms);
-        if (!pollReadable(socket_fd, timeout_ms)) return;
+        if (!pollReadable(socket_fd, timeout_ms, shutdown_flag)) return;
 
         // Read request header byte by byte, looking for \r\n\r\n
         var req_buf: [16384]u8 = undefined;
