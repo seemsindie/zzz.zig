@@ -183,5 +183,5 @@ pub const removeTimer = if (@hasDecl(SelectedBackend, "removeTimer")) SelectedBa
 pub const resetTimer = if (@hasDecl(SelectedBackend, "resetTimer")) SelectedBackend.resetTimer else {};
 
 /// Framework version.
-pub const version = "0.3.1-beta.15";
+pub const version = "0.3.1-beta.16";
 
