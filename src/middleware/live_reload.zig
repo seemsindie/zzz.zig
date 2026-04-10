@@ -15,22 +15,19 @@ pub const LiveReloadConfig = struct {
 const client_script =
     \\<script>
     \\(function() {
-    \\  var alive = true;
-    \\  function check() {
-    \\    var c = new AbortController();
-    \\    var t = setTimeout(function() { c.abort(); }, 1500);
-    \\    fetch(location.href, {method:'HEAD',cache:'no-store',signal:c.signal}).then(function(r) {
-    \\      clearTimeout(t);
-    \\      if (!r.ok) throw new Error();
-    \\      if (!alive) { location.reload(); return; }
-    \\      setTimeout(check, 300);
-    \\    }).catch(function() {
-    \\      clearTimeout(t);
-    \\      alive = false;
-    \\      setTimeout(check, 300);
-    \\    });
+    \\  var ws, connected = false, delay = 500;
+    \\  function go() { window.location.href = window.location.pathname + '?_lr=' + Date.now(); }
+    \\  function connect() {
+    \\    if (ws) { try { ws.close(); } catch(_) {} }
+    \\    try { ws = new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/__pidgn/live-reload'); } catch(_) { return retry(); }
+    \\    ws.onopen = function() { if (connected) { go(); } connected = true; delay = 500; };
+    \\    ws.onmessage = function(e) { try { var m = JSON.parse(e.data); } catch(_) { return; } if (m.type==='reload') go(); };
+    \\    ws.onerror = function() {};
+    \\    ws.onclose = function() { retry(); };
     \\  }
-    \\  setTimeout(check, 300);
+    \\  function retry() { delay = Math.min(delay * 1.5, 3000); setTimeout(connect, delay); }
+    \\  window.addEventListener('beforeunload', function() { if (ws) ws.close(); });
+    \\  connect();
     \\})();
     \\</script>
 ;
