@@ -111,9 +111,9 @@ pub fn handleRequests(
                 req.body = data;
 
                 // Call handler and send response
-                should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served);
+                should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served, socket_fd, shutdown_flag);
             } else {
-                should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served);
+                should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served, socket_fd, shutdown_flag);
             }
         } else if (req.contentLength()) |content_len| {
             if (content_len > config.max_body_size) {
@@ -141,12 +141,12 @@ pub fn handleRequests(
                 }
                 req.body = body_buf;
 
-                should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served);
+                should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served, socket_fd, shutdown_flag);
             } else {
-                should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served);
+                should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served, socket_fd, shutdown_flag);
             }
         } else {
-            should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served);
+            should_continue = processRequest(config, handler, allocator, reader, writer, &req, requests_served, socket_fd, shutdown_flag);
         }
 
         // If processRequest returned false (e.g., WebSocket upgrade), exit the loop
@@ -171,6 +171,8 @@ fn processRequest(
     writer: *Io.Writer,
     req: *Request,
     requests_served: u32,
+    socket_fd: std.posix.fd_t,
+    shutdown_flag: *const std.atomic.Value(bool),
 ) bool {
     var resp = handler(allocator, req) catch |err| {
         std.log.err("handler error: {}", .{err});
@@ -202,6 +204,8 @@ fn processRequest(
                 ws_upgrade.query,
                 ws_upgrade.assigns,
                 upgrade_result.deflate,
+                socket_fd,
+                shutdown_flag,
             );
 
             // Free the WebSocketUpgrade allocated in wsHandler middleware

@@ -192,6 +192,8 @@ pub fn runLoop(
     query: Params,
     assigns: Assigns,
     deflate: bool,
+    socket_fd: std.posix.fd_t,
+    shutdown_flag: *const std.atomic.Value(bool),
 ) void {
     const ReaderPtrType = std.meta.Child(@TypeOf(reader));
     const WriterPtrType = std.meta.Child(@TypeOf(writer));
@@ -229,6 +231,23 @@ pub fn runLoop(
 
     // Frame loop
     while (!ws.closed) {
+        // Poll socket with 500ms timeout so we can check shutdown flag
+        while (!ws.closed) {
+            if (shutdown_flag.load(.acquire)) {
+                ws.closed = true;
+                if (handler.on_close) |on_close| on_close(&ws, 1001, "");
+                return;
+            }
+            var pfds = [1]std.posix.pollfd{.{
+                .fd = socket_fd,
+                .events = std.posix.POLL.IN,
+                .revents = 0,
+            }};
+            const n = std.posix.poll(&pfds, 500) catch break;
+            if (n > 0) break; // data available, proceed to readFrame
+        }
+        if (ws.closed) break;
+
         const frame = frame_mod.readFrame(allocator, &erased_reader) catch {
             // Read error — abnormal close
             if (!ws.closed) {

@@ -15,18 +15,19 @@ pub const LiveReloadConfig = struct {
 const client_script =
     \\<script>
     \\(function() {
+    \\  if (location.search.indexOf('_lr=') > -1) history.replaceState(null, '', location.pathname);
     \\  var ws, connected = false, delay = 500;
-    \\  function go() { window.location.href = window.location.pathname + '?_lr=' + Date.now(); }
+    \\  function go() { location.href = location.pathname + '?_lr=' + Date.now(); }
     \\  function connect() {
     \\    if (ws) { try { ws.close(); } catch(_) {} }
     \\    try { ws = new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/__pidgn/live-reload'); } catch(_) { return retry(); }
-    \\    ws.onopen = function() { if (connected) { go(); } connected = true; delay = 500; };
+    \\    ws.onopen = function() { if (connected) go(); connected = true; delay = 500; };
     \\    ws.onmessage = function(e) { try { var m = JSON.parse(e.data); } catch(_) { return; } if (m.type==='reload') go(); };
     \\    ws.onerror = function() {};
     \\    ws.onclose = function() { retry(); };
     \\  }
     \\  function retry() { delay = Math.min(delay * 1.5, 3000); setTimeout(connect, delay); }
-    \\  window.addEventListener('beforeunload', function() { if (ws) ws.close(); });
+    \\  addEventListener('beforeunload', function() { if (ws) ws.close(); });
     \\  connect();
     \\})();
     \\</script>
