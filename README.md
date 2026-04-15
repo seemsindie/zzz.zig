@@ -209,7 +209,7 @@ zig build -Dtls=true
 
 ## Documentation
 
-Full documentation available at [docs.pidgn.seemsindie.com](https://docs.pidgn.seemsindie.com).
+Full documentation available at [docs.pidgn.dev](https://docs.pidgn.dev).
 
 ## Ecosystem
 

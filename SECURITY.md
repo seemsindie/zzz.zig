@@ -12,7 +12,7 @@ If you discover a security vulnerability, please report it responsibly.
 
 **Do not open a public issue.**
 
-Instead, email: **security@pidgn.seemsindie.com** (or open a private security advisory on GitHub)
+Instead, email: **security@pidgn.dev** (or open a private security advisory on GitHub)
 
 Please include:
 - Description of the vulnerability
