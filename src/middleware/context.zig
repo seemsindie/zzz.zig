@@ -10,6 +10,7 @@ const body_parser = @import("body_parser.zig");
 const ParsedBody = body_parser.ParsedBody;
 const FilePart = body_parser.FilePart;
 const static = @import("static.zig");
+const FlashKind = @import("flash.zig").FlashKind;
 
 /// Handler function type for middleware and route handlers.
 /// Defined outside Context to avoid dependency loop.
@@ -333,6 +334,21 @@ pub const Context = struct {
         self.response.body = body;
         self.response.body_owned = true;
         self.response.headers.append(self.allocator, "Content-Type", "text/html; charset=utf-8") catch {};
+    }
+
+    // ── Flash helpers ────────────────────────────────────────────────
+
+    /// Store a flash message to be read by the next request (typically after a
+    /// redirect). Requires both `session` and `flash` middleware in the pipeline.
+    pub fn putFlash(self: *Context, kind: FlashKind, message: []const u8) void {
+        self.assigns.put(kind.pendingKey(), message);
+    }
+
+    /// Read a flash message set by the previous request. Returns null if unset.
+    pub fn getFlash(self: *const Context, kind: FlashKind) ?[]const u8 {
+        const v = self.assigns.get(kind.displayKey()) orelse return null;
+        if (v.len == 0) return null;
+        return v;
     }
 
     // ── htmx helpers ────────────────────────────────────────────────

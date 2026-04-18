@@ -52,6 +52,23 @@ pub const CsrfConfig = @import("middleware/csrf.zig").CsrfConfig;
 pub const htmx = @import("middleware/htmx.zig").htmx;
 pub const HtmxConfig = @import("middleware/htmx.zig").HtmxConfig;
 
+// Flash Messages
+pub const flash = @import("middleware/flash.zig").flash;
+pub const FlashConfig = @import("middleware/flash.zig").FlashConfig;
+pub const FlashKind = @import("middleware/flash.zig").FlashKind;
+
+// Signed and Encrypted Cookies
+pub const SignedCookies = @import("middleware/secure_cookies.zig").SignedCookies;
+pub const SignedCookieConfig = @import("middleware/secure_cookies.zig").SignedCookieConfig;
+pub const EncryptedCookies = @import("middleware/secure_cookies.zig").EncryptedCookies;
+pub const EncryptedCookieConfig = @import("middleware/secure_cookies.zig").EncryptedCookieConfig;
+
+// Security Headers (CSP, HSTS)
+pub const csp = @import("middleware/security_headers.zig").csp;
+pub const CspConfig = @import("middleware/security_headers.zig").CspConfig;
+pub const hsts = @import("middleware/security_headers.zig").hsts;
+pub const HstsConfig = @import("middleware/security_headers.zig").HstsConfig;
+
 // Error Handler
 pub const errorHandler = @import("middleware/error_handler.zig").errorHandler;
 pub const ErrorHandlerConfig = @import("middleware/error_handler.zig").ErrorHandlerConfig;
