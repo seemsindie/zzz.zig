@@ -1,12 +1,18 @@
 //! i18n: translation lookup, placeholder interpolation, and pluralization.
 //!
-//! Translations are compiled into the binary via a comptime-provided map. At
-//! runtime, `t(locale, key, args)` returns the translation for `key` in
-//! `locale`, falling back to the default locale then to the raw key. `tn` adds
-//! CLDR-inspired plural selection.
+//! Translations can be either **compiled into the binary** via a comptime
+//! `Translations` literal, or **loaded at runtime** from `.po` (GNU gettext)
+//! or JSON bytes via `loadPo` / `loadJson` (typically fed via `@embedFile`
+//! so there's still no file I/O at startup).
 //!
-//! Locale detection (Accept-Language) lives in `middleware/locale.zig`; wiring
-//! those together is documented in the i18n section of the framework docs.
+//! At runtime, `t(locale, key, args)` returns the translation for `key` in
+//! `locale`, falling back to the default locale then to the raw key. `tn` adds
+//! count-based plural selection.
+//!
+//! A process-global catalog can be registered with `setGlobal`, after which
+//! `ctx.t(key, args)` / `ctx.tn(key, n, args)` can be called directly from a
+//! handler — they read the locale from `ctx.assigns["locale"]` (populated by
+//! `localeMiddleware`).
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
@@ -125,6 +131,331 @@ pub fn interpolate(allocator: Allocator, template: []const u8, args: anytype) ![
     return out.toOwnedSlice(allocator);
 }
 
+// ── Global catalog + request helpers ───────────────────────────────────
+
+/// Process-wide catalog pointer used by `ctx.t` / `ctx.tn`. Set once during
+/// app startup (typically right after loading translations) and leave alone.
+var global_catalog: ?*const Translations = null;
+
+pub fn setGlobal(catalog: *const Translations) void {
+    global_catalog = catalog;
+}
+
+pub fn getGlobal() ?*const Translations {
+    return global_catalog;
+}
+
+// ── Runtime loaders: .po and JSON ──────────────────────────────────────
+
+/// A loaded translation set with its backing memory. Call `deinit` when the
+/// process no longer needs translations (typically never, in a web server).
+pub const Loaded = struct {
+    arena: std.heap.ArenaAllocator,
+    /// Fully-initialised Translations backed by `arena`. Usable as long as
+    /// `Loaded` lives.
+    translations: Translations,
+
+    pub fn deinit(self: *Loaded) void {
+        self.arena.deinit();
+    }
+};
+
+/// Load a single-locale `.po` (GNU gettext) file. Attach additional locales
+/// via `mergePo` on the returned `Loaded` before calling `setGlobal`.
+///
+/// Supported features: `msgid` / `msgstr`, `msgid_plural` / `msgstr[N]`,
+/// `#`-prefixed comments, multi-line concatenated strings. Unsupported:
+/// `msgctxt` (context) and fuzzy-translation markers — those are silently
+/// ignored so a stock gettext extract still loads.
+pub fn loadPo(allocator: Allocator, locale_code: []const u8, bytes: []const u8) !Loaded {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+    const aa = arena.allocator();
+
+    var entries = std.ArrayList(Translations.Entry).empty;
+    try parsePoInto(aa, bytes, &entries);
+
+    const locales = try aa.alloc(Translations.Locale, 1);
+    locales[0] = .{
+        .code = try aa.dupe(u8, locale_code),
+        .entries = try entries.toOwnedSlice(aa),
+    };
+
+    return .{
+        .arena = arena,
+        .translations = .{
+            .locales = locales,
+            .default_locale = locales[0].code,
+        },
+    };
+}
+
+/// Load a JSON translations file of the following shape:
+///
+/// ```json
+/// {
+///   "default_locale": "en",
+///   "locales": {
+///     "en": {
+///       "hello": "Hello",
+///       "items": { "0": "no items", "1": "1 item", "other": "{count} items" }
+///     },
+///     "fr": { "hello": "Bonjour" }
+///   }
+/// }
+/// ```
+///
+/// A string value is a plain entry. An object value is a plural entry, where
+/// numeric keys become exact-count forms and `"other"` becomes the fallback.
+pub fn loadJson(allocator: Allocator, bytes: []const u8) !Loaded {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+    const aa = arena.allocator();
+
+    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, aa, bytes, .{});
+    const root = switch (parsed) {
+        .object => |o| o,
+        else => return error.InvalidTranslationsJson,
+    };
+
+    const default_code: []const u8 = blk: {
+        if (root.get("default_locale")) |v| switch (v) {
+            .string => |s| break :blk try aa.dupe(u8, s),
+            else => {},
+        };
+        break :blk try aa.dupe(u8, "en");
+    };
+
+    const locales_obj = switch (root.get("locales") orelse return error.InvalidTranslationsJson) {
+        .object => |o| o,
+        else => return error.InvalidTranslationsJson,
+    };
+
+    var locales = try std.ArrayList(Translations.Locale).initCapacity(aa, locales_obj.count());
+    var it = locales_obj.iterator();
+    while (it.next()) |kv| {
+        const locale_entries = switch (kv.value_ptr.*) {
+            .object => |o| o,
+            else => return error.InvalidTranslationsJson,
+        };
+        var entries = std.ArrayList(Translations.Entry).empty;
+        var eit = locale_entries.iterator();
+        while (eit.next()) |ev| {
+            try entries.append(aa, try jsonEntryToEntry(aa, ev.key_ptr.*, ev.value_ptr.*));
+        }
+        try locales.append(aa, .{
+            .code = try aa.dupe(u8, kv.key_ptr.*),
+            .entries = try entries.toOwnedSlice(aa),
+        });
+    }
+
+    return .{
+        .arena = arena,
+        .translations = .{
+            .locales = try locales.toOwnedSlice(aa),
+            .default_locale = default_code,
+        },
+    };
+}
+
+fn jsonEntryToEntry(
+    aa: Allocator,
+    key: []const u8,
+    value: std.json.Value,
+) !Translations.Entry {
+    switch (value) {
+        .string => |s| return .{ .key = try aa.dupe(u8, key), .value = try aa.dupe(u8, s) },
+        .object => |o| {
+            var plurals = std.ArrayList(Translations.Plural).empty;
+            var fallback: []const u8 = "";
+            var it = o.iterator();
+            while (it.next()) |kv| {
+                const v = switch (kv.value_ptr.*) {
+                    .string => |s| s,
+                    else => return error.InvalidTranslationsJson,
+                };
+                if (std.mem.eql(u8, kv.key_ptr.*, "other")) {
+                    try plurals.append(aa, .{
+                        .count = Translations.other_count,
+                        .value = try aa.dupe(u8, v),
+                    });
+                    fallback = v;
+                } else {
+                    const n = std.fmt.parseInt(u32, kv.key_ptr.*, 10) catch
+                        return error.InvalidTranslationsJson;
+                    try plurals.append(aa, .{ .count = n, .value = try aa.dupe(u8, v) });
+                }
+            }
+            return .{
+                .key = try aa.dupe(u8, key),
+                .value = try aa.dupe(u8, fallback),
+                .plurals = try plurals.toOwnedSlice(aa),
+            };
+        },
+        else => return error.InvalidTranslationsJson,
+    }
+}
+
+// ── .po parser ────────────────────────────────────────────────────────
+
+fn parsePoInto(aa: Allocator, bytes: []const u8, entries: *std.ArrayList(Translations.Entry)) !void {
+    var it = std.mem.splitScalar(u8, bytes, '\n');
+    var current_msgid: []const u8 = "";
+    var current_plural_key: []const u8 = "";
+    var current_msgstr: []const u8 = "";
+    var current_plurals = std.ArrayList(Translations.Plural).empty;
+    var has_plural = false;
+
+    var state: enum { none, msgid, msgid_plural, msgstr, msgstr_n } = .none;
+    var current_plural_index: u32 = 0;
+
+    while (it.next()) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, " \t\r");
+        if (line.len == 0 or line[0] == '#') {
+            // End of an entry on a blank line.
+            if (line.len == 0 and current_msgid.len > 0) {
+                try flushPoEntry(aa, entries, current_msgid, current_msgstr, &current_plurals, has_plural);
+                current_msgid = "";
+                current_plural_key = "";
+                current_msgstr = "";
+                current_plurals = std.ArrayList(Translations.Plural).empty;
+                has_plural = false;
+                state = .none;
+            }
+            continue;
+        }
+
+        // Continuation line: starts with a quote, belongs to the previous field.
+        if (line[0] == '"') {
+            const chunk = try unescapePo(aa, line);
+            switch (state) {
+                .msgid => current_msgid = try concat(aa, current_msgid, chunk),
+                .msgid_plural => current_plural_key = try concat(aa, current_plural_key, chunk),
+                .msgstr => current_msgstr = try concat(aa, current_msgstr, chunk),
+                .msgstr_n => {
+                    const last_idx = current_plurals.items.len - 1;
+                    current_plurals.items[last_idx].value = try concat(aa, current_plurals.items[last_idx].value, chunk);
+                },
+                else => {},
+            }
+            continue;
+        }
+
+        if (std.mem.startsWith(u8, line, "msgid_plural ")) {
+            has_plural = true;
+            state = .msgid_plural;
+            current_plural_key = try unescapePoQuoted(aa, line[13..]);
+            continue;
+        }
+        if (std.mem.startsWith(u8, line, "msgid ")) {
+            state = .msgid;
+            current_msgid = try unescapePoQuoted(aa, line[6..]);
+            continue;
+        }
+        if (std.mem.startsWith(u8, line, "msgstr[")) {
+            // msgstr[N] "..."
+            const close = std.mem.indexOfScalar(u8, line, ']') orelse continue;
+            const n = std.fmt.parseInt(u32, line[7..close], 10) catch continue;
+            current_plural_index = n;
+            const after = std.mem.trim(u8, line[close + 1 ..], " \t");
+            const v = try unescapePoQuoted(aa, after);
+            try current_plurals.append(aa, .{ .count = mapPoIndex(n, has_plural), .value = v });
+            state = .msgstr_n;
+            continue;
+        }
+        if (std.mem.startsWith(u8, line, "msgstr ")) {
+            state = .msgstr;
+            current_msgstr = try unescapePoQuoted(aa, line[7..]);
+            continue;
+        }
+    }
+
+    // Flush trailing entry (no blank line at EOF).
+    if (current_msgid.len > 0) {
+        try flushPoEntry(aa, entries, current_msgid, current_msgstr, &current_plurals, has_plural);
+    }
+}
+
+fn flushPoEntry(
+    aa: Allocator,
+    entries: *std.ArrayList(Translations.Entry),
+    msgid: []const u8,
+    msgstr: []const u8,
+    plurals: *std.ArrayList(Translations.Plural),
+    has_plural: bool,
+) !void {
+    // Skip gettext header entry (empty msgid).
+    if (msgid.len == 0) return;
+    if (has_plural) {
+        try entries.append(aa, .{
+            .key = try aa.dupe(u8, msgid),
+            .value = msgstr,
+            .plurals = try plurals.toOwnedSlice(aa),
+        });
+    } else {
+        try entries.append(aa, .{
+            .key = try aa.dupe(u8, msgid),
+            .value = msgstr,
+        });
+    }
+}
+
+/// Map a po msgstr[N] index to our plural-count value. `[0]` is the singular
+/// (count=1), `[1]` is typically the "other" fallback. More complex CLDR rules
+/// aren't fully expressible in our schema — callers wanting per-count forms
+/// should use JSON which supports explicit numeric keys.
+fn mapPoIndex(idx: u32, _: bool) u32 {
+    return switch (idx) {
+        0 => 1, // singular
+        1 => Translations.other_count, // plural / "other"
+        else => Translations.other_count + idx, // preserve distinctness
+    };
+}
+
+fn unescapePoQuoted(aa: Allocator, input: []const u8) ![]const u8 {
+    const trimmed = std.mem.trim(u8, input, " \t");
+    if (trimmed.len < 2 or trimmed[0] != '"' or trimmed[trimmed.len - 1] != '"') {
+        return "";
+    }
+    return unescapePo(aa, trimmed);
+}
+
+fn unescapePo(aa: Allocator, quoted: []const u8) ![]const u8 {
+    // quoted starts with '"' and ends with '"'.
+    if (quoted.len < 2) return "";
+    const inner = quoted[1 .. quoted.len - 1];
+    var out = try std.ArrayList(u8).initCapacity(aa, inner.len);
+    var i: usize = 0;
+    while (i < inner.len) : (i += 1) {
+        const ch = inner[i];
+        if (ch == '\\' and i + 1 < inner.len) {
+            const next = inner[i + 1];
+            const decoded: u8 = switch (next) {
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                '\\' => '\\',
+                '"' => '"',
+                else => next,
+            };
+            try out.append(aa, decoded);
+            i += 1;
+        } else {
+            try out.append(aa, ch);
+        }
+    }
+    return out.toOwnedSlice(aa);
+}
+
+fn concat(aa: Allocator, a: []const u8, b: []const u8) ![]const u8 {
+    if (a.len == 0) return b;
+    if (b.len == 0) return a;
+    const out = try aa.alloc(u8, a.len + b.len);
+    @memcpy(out[0..a.len], a);
+    @memcpy(out[a.len..], b);
+    return out;
+}
+
 fn writeArg(allocator: Allocator, out: *std.ArrayList(u8), v: anytype) !void {
     const V = @TypeOf(v);
     if (V == []const u8 or V == []u8) {
@@ -236,4 +567,141 @@ test "interpolate without args struct" {
     const got = try interpolate(std.testing.allocator, "hello world", .{});
     defer std.testing.allocator.free(got);
     try std.testing.expectEqualStrings("hello world", got);
+}
+
+test "loadJson parses plain and plural entries" {
+    const json =
+        \\{
+        \\  "default_locale": "en",
+        \\  "locales": {
+        \\    "en": {
+        \\      "hello": "Hello",
+        \\      "items": { "0": "no items", "1": "1 item", "other": "{count} items" }
+        \\    },
+        \\    "fr": { "hello": "Bonjour" }
+        \\  }
+        \\}
+    ;
+    var loaded = try loadJson(std.testing.allocator, json);
+    defer loaded.deinit();
+
+    try std.testing.expectEqualStrings("Hello", lookup(loaded.translations, "en", "hello"));
+    try std.testing.expectEqualStrings("Bonjour", lookup(loaded.translations, "fr", "hello"));
+
+    // Fallback to default when fr missing a key.
+    try std.testing.expectEqualStrings(
+        "{count} items",
+        lookup(loaded.translations, "fr", "items"),
+    );
+
+    // Plurals.
+    const one = try tn(std.testing.allocator, loaded.translations, "en", "items", 1, .{});
+    defer std.testing.allocator.free(one);
+    try std.testing.expectEqualStrings("1 item", one);
+
+    const many = try tn(std.testing.allocator, loaded.translations, "en", "items", 5, .{ .count = @as(u32, 5) });
+    defer std.testing.allocator.free(many);
+    try std.testing.expectEqualStrings("5 items", many);
+}
+
+test "loadPo parses singular and plural entries" {
+    const po =
+        \\# English translations
+        \\msgid ""
+        \\msgstr "Content-Type: text/plain; charset=UTF-8\n"
+        \\
+        \\msgid "hello"
+        \\msgstr "Hello"
+        \\
+        \\msgid "farewell"
+        \\msgstr "Goodbye"
+        \\
+        \\msgid "items_singular"
+        \\msgid_plural "items_plural"
+        \\msgstr[0] "1 item"
+        \\msgstr[1] "{count} items"
+    ;
+    var loaded = try loadPo(std.testing.allocator, "en", po);
+    defer loaded.deinit();
+
+    try std.testing.expectEqualStrings("Hello", lookup(loaded.translations, "en", "hello"));
+    try std.testing.expectEqualStrings("Goodbye", lookup(loaded.translations, "en", "farewell"));
+
+    const one = try tn(std.testing.allocator, loaded.translations, "en", "items_singular", 1, .{});
+    defer std.testing.allocator.free(one);
+    try std.testing.expectEqualStrings("1 item", one);
+
+    const many = try tn(std.testing.allocator, loaded.translations, "en", "items_singular", 9, .{ .count = @as(u32, 9) });
+    defer std.testing.allocator.free(many);
+    try std.testing.expectEqualStrings("9 items", many);
+}
+
+test "loadPo handles multi-line string continuations" {
+    const po =
+        \\msgid "multi"
+        \\msgstr ""
+        \\"first line "
+        \\"second line"
+    ;
+    var loaded = try loadPo(std.testing.allocator, "en", po);
+    defer loaded.deinit();
+    try std.testing.expectEqualStrings("first line second line", lookup(loaded.translations, "en", "multi"));
+}
+
+test "setGlobal stores catalog pointer" {
+    const cat = Translations{
+        .default_locale = "en",
+        .locales = &.{
+            .{ .code = "en", .entries = &.{
+                .{ .key = "hi", .value = "hello" },
+            } },
+        },
+    };
+    setGlobal(&cat);
+    defer global_catalog = null;
+
+    const g = getGlobal().?;
+    try std.testing.expectEqualStrings("hello", lookup(g.*, "en", "hi"));
+}
+
+// Verify ctx.t reads the global catalog and the locale from assigns.
+test "ctx.t uses global catalog and assigns locale" {
+    const Request = @import("../core/http/request.zig").Request;
+    _ = @import("../core/http/status.zig").StatusCode;
+    const Router = @import("../router/router.zig").Router;
+    const Context = @import("../middleware/context.zig").Context;
+
+    const cat = Translations{
+        .default_locale = "en",
+        .locales = &.{
+            .{ .code = "en", .entries = &.{
+                .{ .key = "greet", .value = "Hello, {name}!" },
+            } },
+            .{ .code = "fr", .entries = &.{
+                .{ .key = "greet", .value = "Bonjour, {name} !" },
+            } },
+        },
+    };
+    setGlobal(&cat);
+    defer global_catalog = null;
+
+    const H = struct {
+        fn h(ctx: *Context) !void {
+            ctx.assign("locale", "fr");
+            const msg = try ctx.t("greet", .{ .name = @as([]const u8, "Ivan") });
+            ctx.text(.ok, msg);
+        }
+    };
+    const App = Router.define(.{
+        .routes = &.{Router.get("/", H.h)},
+    });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var req: Request = .{ .method = .GET, .path = "/" };
+    defer req.deinit(alloc);
+    var resp = try App.handler(alloc, &req);
+    defer resp.deinit(alloc);
+    try std.testing.expectEqualStrings("Bonjour, Ivan !", resp.body.?);
 }

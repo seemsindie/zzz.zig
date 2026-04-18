@@ -11,6 +11,7 @@ const ParsedBody = body_parser.ParsedBody;
 const FilePart = body_parser.FilePart;
 const static = @import("static.zig");
 const FlashKind = @import("flash.zig").FlashKind;
+const i18n_mod = @import("../core/i18n.zig");
 
 /// Handler function type for middleware and route handlers.
 /// Defined outside Context to avoid dependency loop.
@@ -349,6 +350,35 @@ pub const Context = struct {
         const v = self.assigns.get(kind.displayKey()) orelse return null;
         if (v.len == 0) return null;
         return v;
+    }
+
+    // ── i18n helpers ────────────────────────────────────────────────
+
+    /// Translate `key` using the process-global catalog (set via
+    /// `pidgn.i18n.setGlobal`) and the locale stored in `ctx.assigns["locale"]`
+    /// by `localeMiddleware`. Falls back to the default locale, then to the
+    /// raw key, if nothing matches.
+    ///
+    /// Returns an owned slice allocated from `ctx.allocator` (the request
+    /// arena), so the string survives the response without explicit free.
+    pub fn t(self: *Context, key: []const u8, args: anytype) ![]u8 {
+        const cat = i18n_mod.getGlobal() orelse {
+            // No catalog registered — copy the key so the caller still gets
+            // a writable slice they can pass to templates.
+            return self.allocator.dupe(u8, key);
+        };
+        const locale = self.getAssign("locale") orelse cat.default_locale;
+        return i18n_mod.t(self.allocator, cat.*, locale, key, args);
+    }
+
+    /// Plural-aware variant of `t`. `n` selects the plural form; `args` is
+    /// interpolated as usual.
+    pub fn tn(self: *Context, key: []const u8, n: u32, args: anytype) ![]u8 {
+        const cat = i18n_mod.getGlobal() orelse {
+            return self.allocator.dupe(u8, key);
+        };
+        const locale = self.getAssign("locale") orelse cat.default_locale;
+        return i18n_mod.tn(self.allocator, cat.*, locale, key, n, args);
     }
 
     // ── htmx helpers ────────────────────────────────────────────────
