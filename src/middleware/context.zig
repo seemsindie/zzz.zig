@@ -10,7 +10,7 @@ const body_parser = @import("body_parser.zig");
 const ParsedBody = body_parser.ParsedBody;
 const FilePart = body_parser.FilePart;
 const static = @import("static.zig");
-const FlashKind = @import("flash.zig").FlashKind;
+const flash_mod = @import("flash.zig");
 const i18n_mod = @import("../core/i18n.zig");
 const pidgn_template = @import("pidgn_template");
 
@@ -362,13 +362,21 @@ pub const Context = struct {
 
     /// Store a flash message to be read by the next request (typically after a
     /// redirect). Requires both `session` and `flash` middleware in the pipeline.
-    pub fn putFlash(self: *Context, kind: FlashKind, message: []const u8) void {
-        self.assigns.put(kind.pendingKey(), message);
+    ///
+    /// `key` is arbitrary — use any name that makes sense for your app
+    /// (`"success"`, `"error"`, `"cart_added"`, `"payment_failed"`, etc.).
+    /// The message is copied into the request arena, so the caller's storage
+    /// doesn't need to outlive this call.
+    pub fn putFlash(self: *Context, key: []const u8, message: []const u8) !void {
+        const pending = try flash_mod.pendingKey(self.allocator, key);
+        const message_copy = try self.allocator.dupe(u8, message);
+        self.assigns.put(pending, message_copy);
     }
 
     /// Read a flash message set by the previous request. Returns null if unset.
-    pub fn getFlash(self: *const Context, kind: FlashKind) ?[]const u8 {
-        const v = self.assigns.get(kind.displayKey()) orelse return null;
+    pub fn getFlash(self: *const Context, key: []const u8) ?[]const u8 {
+        const display = flash_mod.displayKey(self.allocator, key) catch return null;
+        const v = self.assigns.get(display) orelse return null;
         if (v.len == 0) return null;
         return v;
     }

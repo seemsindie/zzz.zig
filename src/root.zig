@@ -55,7 +55,6 @@ pub const HtmxConfig = @import("middleware/htmx.zig").HtmxConfig;
 // Flash Messages
 pub const flash = @import("middleware/flash.zig").flash;
 pub const FlashConfig = @import("middleware/flash.zig").FlashConfig;
-pub const FlashKind = @import("middleware/flash.zig").FlashKind;
 
 // Signed and Encrypted Cookies
 pub const SignedCookies = @import("middleware/secure_cookies.zig").SignedCookies;

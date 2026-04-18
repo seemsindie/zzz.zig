@@ -14,35 +14,44 @@ pub const SessionConfig = struct {
 };
 
 /// A single session entry: maps a 32-char hex ID to an Assigns snapshot.
-/// Values are deep-copied into `value_store` so they survive across requests.
+/// Both keys and values are deep-copied into `value_store` so they survive
+/// across requests regardless of whether the caller supplied static literals
+/// or arena-allocated strings.
 const SessionEntry = struct {
     id: [32]u8,
     data: Assigns = .{},
     active: bool = false,
-    /// Static buffer holding copies of assign value data.
+    /// Static buffer holding copies of assign key *and* value bytes. Sized to
+    /// fit a reasonable per-session payload plus the modest overhead of
+    /// copying keys.
     value_store: [2048]u8 = undefined,
     value_store_len: usize = 0,
 
-    /// Deep-copy assigns into this entry, copying value bytes into value_store.
-    /// Keys are assumed to be string literals (static lifetime) and are not copied.
-    /// Uses a staging buffer to avoid @memcpy aliasing when values already point
-    /// into value_store (loaded from a previous persist).
+    /// Deep-copy assigns into this entry, copying key and value bytes into
+    /// value_store. Uses a staging buffer to avoid @memcpy aliasing when
+    /// existing slices already point into value_store (loaded from a
+    /// previous persist).
     fn persistAssigns(self: *SessionEntry, assigns: *const Assigns) void {
-        // Stage into a temp buffer to avoid aliasing with value_store
         var staging: [2048]u8 = undefined;
         var staging_len: usize = 0;
         var count: usize = 0;
-        var keys: [16][]const u8 = undefined;
-        var offsets: [16]usize = undefined;
-        var lengths: [16]usize = undefined;
+        var key_offsets: [16]usize = undefined;
+        var key_lengths: [16]usize = undefined;
+        var val_offsets: [16]usize = undefined;
+        var val_lengths: [16]usize = undefined;
 
         for (assigns.entries[0..assigns.len]) |kv| {
             if (std.mem.eql(u8, kv.key, "session_id")) continue;
-            if (staging_len + kv.value.len <= staging.len and count < 16) {
-                keys[count] = kv.key;
-                offsets[count] = staging_len;
-                lengths[count] = kv.value.len;
-                @memcpy(staging[staging_len .. staging_len + kv.value.len], kv.value);
+            const needed = kv.key.len + kv.value.len;
+            if (staging_len + needed <= staging.len and count < 16) {
+                key_offsets[count] = staging_len;
+                key_lengths[count] = kv.key.len;
+                @memcpy(staging[staging_len..][0..kv.key.len], kv.key);
+                staging_len += kv.key.len;
+
+                val_offsets[count] = staging_len;
+                val_lengths[count] = kv.value.len;
+                @memcpy(staging[staging_len..][0..kv.value.len], kv.value);
                 staging_len += kv.value.len;
                 count += 1;
             }
@@ -52,10 +61,12 @@ const SessionEntry = struct {
         @memcpy(self.value_store[0..staging_len], staging[0..staging_len]);
         self.value_store_len = staging_len;
 
-        // Rebuild data with slices pointing into value_store
+        // Rebuild data with slices pointing into value_store (both keys and values).
         self.data = .{};
         for (0..count) |i| {
-            self.data.put(keys[i], self.value_store[offsets[i] .. offsets[i] + lengths[i]]);
+            const key = self.value_store[key_offsets[i] .. key_offsets[i] + key_lengths[i]];
+            const val = self.value_store[val_offsets[i] .. val_offsets[i] + val_lengths[i]];
+            self.data.put(key, val);
         }
     }
 };
