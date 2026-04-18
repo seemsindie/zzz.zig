@@ -101,6 +101,98 @@ fn clamp(v: u32, lo: u32, hi: u32) u32 {
     return @min(@max(v, lo), hi);
 }
 
+// ── Cursor pagination ──────────────────────────────────────────────────
+
+/// Opaque cursor handed to the client between page fetches. Encoding is
+/// URL-safe base64 of whatever opaque bytes the handler produced (typically
+/// the sort-key of the last row on the page — a timestamp, a compound ID, etc).
+///
+/// Pidgn doesn't prescribe what the decoded bytes represent; it just decodes
+/// the base64 envelope so handlers get a clean slice to parse into their own
+/// shape. Encoding back to base64 is handled by `encodeCursor`.
+pub const Cursor = struct {
+    /// Requested page size (clamped).
+    limit: u32,
+    /// Raw cursor value from the client, or null if none (first page).
+    raw: ?[]const u8,
+    /// The raw cursor, URL-safe-base64-decoded. Caller-owned.
+    decoded: ?[]u8,
+
+    pub fn deinit(self: *Cursor, allocator: std.mem.Allocator) void {
+        if (self.decoded) |d| allocator.free(d);
+    }
+};
+
+pub const CursorOptions = struct {
+    default_per_page: u32 = 20,
+    max_per_page: u32 = 100,
+    min_per_page: u32 = 1,
+    /// Query param holding the cursor. Default matches REST convention.
+    cursor_param: []const u8 = "cursor",
+    /// Query param for page size. Both `per_page` and `limit` are accepted.
+    per_page_param: []const u8 = "per_page",
+};
+
+const base64_url = std.base64.url_safe_no_pad;
+
+/// Parse cursor pagination params from the query string. The decoded cursor
+/// bytes are allocated from `allocator` — call `Cursor.deinit` when done.
+pub fn cursorFromQuery(
+    allocator: std.mem.Allocator,
+    ctx: *const Context,
+    opts: CursorOptions,
+) !Cursor {
+    const per_page_raw = ctx.query.get(opts.per_page_param) orelse ctx.query.get("limit");
+    const limit = clamp(
+        parseU32(per_page_raw) orelse opts.default_per_page,
+        opts.min_per_page,
+        opts.max_per_page,
+    );
+
+    const raw = ctx.query.get(opts.cursor_param);
+    var decoded: ?[]u8 = null;
+    if (raw) |r| {
+        if (r.len > 0) {
+            const dec_len = base64_url.Decoder.calcSizeForSlice(r) catch null;
+            if (dec_len) |n| {
+                const buf = try allocator.alloc(u8, n);
+                base64_url.Decoder.decode(buf, r) catch {
+                    allocator.free(buf);
+                    return error.InvalidCursor;
+                };
+                decoded = buf;
+            } else {
+                return error.InvalidCursor;
+            }
+        }
+    }
+
+    return .{ .limit = limit, .raw = raw, .decoded = decoded };
+}
+
+/// Encode opaque bytes as a URL-safe-base64 cursor token suitable for the
+/// `?cursor=...` query param.
+pub fn encodeCursor(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
+    const n = base64_url.Encoder.calcSize(raw.len);
+    const out = try allocator.alloc(u8, n);
+    _ = base64_url.Encoder.encode(out, raw);
+    return out;
+}
+
+/// Build a cursor from a numeric ID, the simplest common case.
+pub fn encodeIntCursor(allocator: std.mem.Allocator, id: i64) ![]u8 {
+    var buf: [32]u8 = undefined;
+    const s = std.fmt.bufPrint(&buf, "{d}", .{id}) catch unreachable;
+    return encodeCursor(allocator, s);
+}
+
+/// Decode a numeric-ID cursor produced by `encodeIntCursor`. Returns null
+/// when the cursor is missing or unparseable (i.e. first page or malformed).
+pub fn decodeIntCursor(cursor: *const Cursor) ?i64 {
+    const d = cursor.decoded orelse return null;
+    return std.fmt.parseInt(i64, d, 10) catch null;
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────
 
 const Request = @import("../core/http/request.zig").Request;
@@ -182,4 +274,69 @@ test "invalid values fall back" {
     const p = fromQuery(&ctx, .{});
     try std.testing.expectEqual(@as(u32, 1), p.page);
     try std.testing.expectEqual(@as(u32, 20), p.per_page);
+}
+
+// ── Cursor pagination tests ────────────────────────────────────────────
+
+test "cursor: first page has no cursor, default limit" {
+    var req: Request = .{};
+    defer req.deinit(std.testing.allocator);
+    const ctx = makeCtx(std.testing.allocator, &req);
+
+    var c = try cursorFromQuery(std.testing.allocator, &ctx, .{});
+    defer c.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(u32, 20), c.limit);
+    try std.testing.expect(c.raw == null);
+    try std.testing.expect(c.decoded == null);
+}
+
+test "cursor: decoded bytes match round-trip" {
+    const token = try encodeCursor(std.testing.allocator, "user:42:stamp:170000");
+    defer std.testing.allocator.free(token);
+
+    var req: Request = .{};
+    defer req.deinit(std.testing.allocator);
+    var ctx = makeCtx(std.testing.allocator, &req);
+    ctx.query.put("cursor", token);
+    ctx.query.put("per_page", "50");
+
+    var c = try cursorFromQuery(std.testing.allocator, &ctx, .{});
+    defer c.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(u32, 50), c.limit);
+    try std.testing.expectEqualStrings("user:42:stamp:170000", c.decoded.?);
+}
+
+test "cursor: int cursor round-trip" {
+    const token = try encodeIntCursor(std.testing.allocator, 12345);
+    defer std.testing.allocator.free(token);
+
+    var req: Request = .{};
+    defer req.deinit(std.testing.allocator);
+    var ctx = makeCtx(std.testing.allocator, &req);
+    ctx.query.put("cursor", token);
+
+    var c = try cursorFromQuery(std.testing.allocator, &ctx, .{});
+    defer c.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(i64, 12345), decodeIntCursor(&c).?);
+}
+
+test "cursor: malformed cursor rejected" {
+    var req: Request = .{};
+    defer req.deinit(std.testing.allocator);
+    var ctx = makeCtx(std.testing.allocator, &req);
+    // Not valid URL-safe base64 (contains '#'), but calcSizeForSlice tolerates
+    // length; decode will fail — which we surface as error.InvalidCursor.
+    ctx.query.put("cursor", "not$$base64@@@");
+    try std.testing.expectError(error.InvalidCursor, cursorFromQuery(std.testing.allocator, &ctx, .{}));
+}
+
+test "cursor: limit clamped to max" {
+    var req: Request = .{};
+    defer req.deinit(std.testing.allocator);
+    var ctx = makeCtx(std.testing.allocator, &req);
+    ctx.query.put("per_page", "9999");
+
+    var c = try cursorFromQuery(std.testing.allocator, &ctx, .{ .max_per_page = 100 });
+    defer c.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(u32, 100), c.limit);
 }
