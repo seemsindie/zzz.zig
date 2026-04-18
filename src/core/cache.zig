@@ -15,6 +15,7 @@ pub fn Cache(comptime V: type) type {
 
         const Entry = struct {
             key_hash: u64 = 0,
+            tag_hash: u64 = 0, // 0 = no tag
             value: V = undefined,
             expires_ns: i128 = 0,
             occupied: bool = false,
@@ -53,10 +54,17 @@ pub fn Cache(comptime V: type) type {
         /// Insert or update a value with a TTL in milliseconds.
         /// If ttl_ms is 0, the entry never expires.
         pub fn put(self: *Self, key: []const u8, value: V, ttl_ms: u32) void {
+            self.putWithTag(key, value, ttl_ms, "");
+        }
+
+        /// Insert or update with an associated tag. Entries sharing a tag can be
+        /// bulk-invalidated via `invalidateTag`. An empty tag is treated as "no tag".
+        pub fn putWithTag(self: *Self, key: []const u8, value: V, ttl_ms: u32, tag: []const u8) void {
             spinLock(&self.mutex);
             defer self.mutex.unlock();
 
             const hash = std.hash.Wyhash.hash(0, key);
+            const tag_hash: u64 = if (tag.len == 0) 0 else std.hash.Wyhash.hash(1, tag);
             const expires_ns: i128 = if (ttl_ms > 0)
                 getMonotonicNs() + @as(i128, ttl_ms) * std.time.ns_per_ms
             else
@@ -79,12 +87,14 @@ pub fn Cache(comptime V: type) type {
                     // Update existing
                     entry.value = value;
                     entry.expires_ns = expires_ns;
+                    entry.tag_hash = tag_hash;
                     return;
                 }
                 // Check if this entry is expired, reuse its slot
                 if (entry.expires_ns > 0 and getMonotonicNs() >= entry.expires_ns) {
                     entry.* = .{
                         .key_hash = hash,
+                        .tag_hash = tag_hash,
                         .value = value,
                         .expires_ns = expires_ns,
                         .occupied = true,
@@ -98,6 +108,7 @@ pub fn Cache(comptime V: type) type {
             if (first_empty) |slot| {
                 self.entries[slot] = .{
                     .key_hash = hash,
+                    .tag_hash = tag_hash,
                     .value = value,
                     .expires_ns = expires_ns,
                     .occupied = true,
@@ -126,6 +137,22 @@ pub fn Cache(comptime V: type) type {
                     return;
                 }
             }
+        }
+
+        /// Invalidate every entry tagged with `tag`. Returns the number cleared.
+        pub fn invalidateTag(self: *Self, tag: []const u8) usize {
+            if (tag.len == 0) return 0;
+            spinLock(&self.mutex);
+            defer self.mutex.unlock();
+            const tag_hash = std.hash.Wyhash.hash(1, tag);
+            var n: usize = 0;
+            for (&self.entries) |*entry| {
+                if (entry.occupied and entry.tag_hash == tag_hash) {
+                    entry.occupied = false;
+                    n += 1;
+                }
+            }
+            return n;
         }
 
         /// Clear all entries.
@@ -221,4 +248,25 @@ test "Cache with slice value type" {
     var cache: Cache([]const u8) = .{};
     cache.put("greeting", "hello world", 0);
     try testing.expectEqualStrings("hello world", cache.get("greeting").?);
+}
+
+test "Cache invalidateTag clears entries with matching tag" {
+    var cache: Cache(u32) = .{};
+    cache.putWithTag("u:1:name", 1, 0, "user:1");
+    cache.putWithTag("u:1:email", 2, 0, "user:1");
+    cache.putWithTag("u:2:name", 3, 0, "user:2");
+    cache.put("untagged", 9, 0);
+
+    try testing.expectEqual(@as(usize, 2), cache.invalidateTag("user:1"));
+    try testing.expect(cache.get("u:1:name") == null);
+    try testing.expect(cache.get("u:1:email") == null);
+    try testing.expectEqual(@as(u32, 3), cache.get("u:2:name").?);
+    try testing.expectEqual(@as(u32, 9), cache.get("untagged").?);
+}
+
+test "Cache invalidateTag ignores empty tag" {
+    var cache: Cache(u32) = .{};
+    cache.put("x", 1, 0);
+    try testing.expectEqual(@as(usize, 0), cache.invalidateTag(""));
+    try testing.expectEqual(@as(u32, 1), cache.get("x").?);
 }

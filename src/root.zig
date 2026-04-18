@@ -69,6 +69,47 @@ pub const CspConfig = @import("middleware/security_headers.zig").CspConfig;
 pub const hsts = @import("middleware/security_headers.zig").hsts;
 pub const HstsConfig = @import("middleware/security_headers.zig").HstsConfig;
 
+// Pagination, Sanitization, Form Builder
+pub const pagination = @import("middleware/pagination.zig");
+pub const sanitize = @import("middleware/sanitize.zig");
+pub const form = @import("middleware/form_builder.zig");
+
+// Request inspection + locale negotiation
+pub const userAgent = @import("middleware/user_agent.zig");
+pub const localeMiddleware = @import("middleware/locale.zig").localeMiddleware;
+pub const LocaleConfig = @import("middleware/locale.zig").LocaleConfig;
+pub const detectLocale = @import("middleware/locale.zig").detect;
+pub const negotiateLocale = @import("middleware/locale.zig").negotiate;
+
+// IP allowlist / blocklist
+pub const ipAccess = @import("middleware/ip_access.zig").ipAccess;
+pub const ipAllowlist = @import("middleware/ip_access.zig").ipAllowlist;
+pub const ipBlocklist = @import("middleware/ip_access.zig").ipBlocklist;
+pub const IpAccessConfig = @import("middleware/ip_access.zig").IpAccessConfig;
+
+// Action log / throttle / range
+pub const actionLog = @import("middleware/action_log.zig").actionLog;
+pub const ActionLogConfig = @import("middleware/action_log.zig").ActionLogConfig;
+pub const ActionLogStderrSink = @import("middleware/action_log.zig").StderrSink;
+pub const throttle = @import("middleware/throttle.zig").throttle;
+pub const ThrottleConfig = @import("middleware/throttle.zig").ThrottleConfig;
+pub const range = @import("middleware/range.zig");
+
+// Geo-IP
+pub const geoIp = @import("middleware/geoip.zig").geoIp;
+pub const GeoIpConfig = @import("middleware/geoip.zig").GeoIpConfig;
+pub const GeoInfo = @import("middleware/geoip.zig").GeoInfo;
+pub const NoopGeoProvider = @import("middleware/geoip.zig").NoopProvider;
+
+// File Storage
+pub const Storage = @import("core/storage.zig").Storage;
+pub const StorageError = @import("core/storage.zig").StorageError;
+pub const LocalStorage = @import("core/storage.zig").LocalStorage;
+
+// i18n
+pub const i18n = @import("core/i18n.zig");
+pub const Translations = @import("core/i18n.zig").Translations;
+
 // Error Handler
 pub const errorHandler = @import("middleware/error_handler.zig").errorHandler;
 pub const ErrorHandlerConfig = @import("middleware/error_handler.zig").ErrorHandlerConfig;

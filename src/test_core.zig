@@ -23,6 +23,12 @@ pub const presence = @import("core/channel/presence.zig");
 pub const socket = @import("core/channel/socket.zig");
 pub const channel_mod = @import("core/channel/channel_mod.zig");
 
+// Storage
+pub const storage = @import("core/storage.zig");
+
+// i18n
+pub const i18n = @import("core/i18n.zig");
+
 test {
     std.testing.refAllDecls(@This());
 }
