@@ -33,8 +33,8 @@
     // internet connectivity.
     .dependencies = .{
         .pidgn_template = .{
-            .url = "git+https://github.com/seemsindie/pidgn_template#023adccb9fa49e20ca7976432ae4ceb7b6c703ef",
-            .hash = "pidgn_template-0.3.0-beta.1-vkexMPsAAQDhWHP24MH2FpxjcNOcpdZtfxuF5nA7V9UV",
+            .url = "git+https://github.com/seemsindie/pidgn_template#3a971e99c79ac8b16ac8cb0d27614afbe0336a58",
+            .hash = "pidgn_template-0.3.1-beta.1-vkexMHMiAQCSCCWHEQLbbgpSejRAkpexI7Y_mL7p1Jey",
         },
         .openssl = .{
             .url = "git+https://github.com/seemsindie/openssl-zig#37f77ff7c234f262ea809a19659e3754615bdeb6",

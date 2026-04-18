@@ -12,6 +12,7 @@ const FilePart = body_parser.FilePart;
 const static = @import("static.zig");
 const FlashKind = @import("flash.zig").FlashKind;
 const i18n_mod = @import("../core/i18n.zig");
+const pidgn_template = @import("pidgn_template");
 
 /// Handler function type for middleware and route handlers.
 /// Defined outside Context to avoid dependency loop.
@@ -307,10 +308,28 @@ pub const Context = struct {
         return null;
     }
 
+    /// Install the i18n translator callback on the current thread for the
+    /// duration of a render. Paired with `uninstallI18n` via `defer`. No-op if
+    /// no global catalog has been registered.
+    fn installI18n(self: *Context) void {
+        const cat = i18n_mod.getGlobal() orelse return;
+        const locale = self.getAssign("locale") orelse cat.default_locale;
+        i18n_mod.setThreadCatalog(cat);
+        pidgn_template.setTranslator(&i18n_mod.templateTranslate);
+        pidgn_template.setLocale(locale);
+    }
+
+    fn uninstallI18n() void {
+        pidgn_template.clearI18n();
+        i18n_mod.setThreadCatalog(null);
+    }
+
     /// Render a comptime-parsed template with data and send as HTML response.
     /// The template type must have a `render(allocator, data) ![]const u8` method,
     /// as returned by `pidgn.template()`.
     pub fn render(self: *Context, comptime Tmpl: type, status: StatusCode, data: anytype) !void {
+        self.installI18n();
+        defer uninstallI18n();
         const body = try Tmpl.render(self.allocator, data);
         self.response.status = status;
         self.response.body = body;
@@ -328,6 +347,8 @@ pub const Context = struct {
         status: StatusCode,
         data: anytype,
     ) !void {
+        self.installI18n();
+        defer uninstallI18n();
         const content = try ContentTmpl.render(self.allocator, data);
         defer self.allocator.free(content);
         const body = try LayoutTmpl.renderWithYield(self.allocator, data, content);
@@ -435,6 +456,8 @@ pub const Context = struct {
 
     /// Render a template WITHOUT layout wrapping (for htmx fragment responses).
     pub fn renderPartial(self: *Context, comptime Tmpl: type, status: StatusCode, data: anytype) !void {
+        self.installI18n();
+        defer uninstallI18n();
         const body = try Tmpl.render(self.allocator, data);
         self.response.status = status;
         self.response.body = body;
@@ -453,6 +476,8 @@ pub const Context = struct {
         data: anytype,
         extra_yields: anytype,
     ) !void {
+        self.installI18n();
+        defer uninstallI18n();
         const content = try ContentTmpl.render(self.allocator, data);
         defer self.allocator.free(content);
         const body = try LayoutTmpl.renderWithYieldAndNamed(self.allocator, data, content, extra_yields);

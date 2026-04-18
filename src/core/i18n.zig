@@ -145,6 +145,42 @@ pub fn getGlobal() ?*const Translations {
     return global_catalog;
 }
 
+/// Per-thread catalog used by `templateTranslate`. Set by `Context.render` just
+/// before the render call; cleared on the `defer`. Keeping this separate from
+/// `global_catalog` lets the translator adapter stay a plain top-level
+/// function (so it can be passed as a `*const fn` pointer to the template
+/// engine's thread-local slot).
+threadlocal var tl_catalog: ?*const Translations = null;
+
+pub fn setThreadCatalog(cat: ?*const Translations) void {
+    tl_catalog = cat;
+}
+
+/// Adapter function matching `pidgn_template.TranslateFn`. Reads the catalog
+/// from `tl_catalog` (set by Context before each render), does a plain lookup
+/// when `count` is null, or a plural lookup with `{count}` substitution when
+/// `count` is non-null.
+///
+/// Allocation: a plain lookup returns a slice owned by the catalog — no
+/// allocation. A plural lookup only allocates when the chosen form contains
+/// the `{count}` placeholder.
+pub fn templateTranslate(
+    allocator: Allocator,
+    locale: []const u8,
+    key: []const u8,
+    count: ?u32,
+) anyerror![]const u8 {
+    const cat = tl_catalog orelse return key;
+    if (count) |n| {
+        const raw = pluralLookup(cat.*, locale, key, n) orelse
+            pluralLookup(cat.*, cat.default_locale, key, n) orelse
+            key;
+        if (std.mem.indexOf(u8, raw, "{count}") == null) return raw;
+        return interpolate(allocator, raw, .{ .count = n });
+    }
+    return lookup(cat.*, locale, key);
+}
+
 // ── Runtime loaders: .po and JSON ──────────────────────────────────────
 
 /// A loaded translation set with its backing memory. Call `deinit` when the
@@ -662,6 +698,132 @@ test "setGlobal stores catalog pointer" {
 
     const g = getGlobal().?;
     try std.testing.expectEqualStrings("hello", lookup(g.*, "en", "hi"));
+}
+
+// Verify the {{"key" | t}} template pipe uses the thread-local catalog
+// installed by Context.render and the locale from ctx.assigns["locale"].
+test "ctx.render t pipe uses assigns locale and global catalog" {
+    const Request = @import("../core/http/request.zig").Request;
+    _ = @import("../core/http/status.zig").StatusCode;
+    const Router = @import("../router/router.zig").Router;
+    const Context = @import("../middleware/context.zig").Context;
+    const engine = @import("pidgn_template");
+
+    const cat = Translations{
+        .default_locale = "en",
+        .locales = &.{
+            .{ .code = "en", .entries = &.{
+                .{ .key = "greet", .value = "Hello" },
+            } },
+            .{ .code = "fr", .entries = &.{
+                .{ .key = "greet", .value = "Bonjour" },
+            } },
+        },
+    };
+    setGlobal(&cat);
+    defer global_catalog = null;
+
+    const Tmpl = engine.template("{{\"greet\" | t}}");
+
+    const H = struct {
+        const T = Tmpl;
+        fn h(ctx: *Context) !void {
+            ctx.assign("locale", "fr");
+            try ctx.render(T, .ok, .{});
+        }
+    };
+    const App = Router.define(.{
+        .routes = &.{Router.get("/", H.h)},
+    });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var req: Request = .{ .method = .GET, .path = "/" };
+    defer req.deinit(alloc);
+    var resp = try App.handler(alloc, &req);
+    defer resp.deinit(alloc);
+    try std.testing.expectEqualStrings("Bonjour", resp.body.?);
+}
+
+test "ctx.render tn pipe picks plural by count and substitutes {count}" {
+    const Request = @import("../core/http/request.zig").Request;
+    _ = @import("../core/http/status.zig").StatusCode;
+    const Router = @import("../router/router.zig").Router;
+    const Context = @import("../middleware/context.zig").Context;
+    const engine = @import("pidgn_template");
+
+    const cat = Translations{
+        .default_locale = "en",
+        .locales = &.{
+            .{ .code = "en", .entries = &.{
+                .{
+                    .key = "items",
+                    .value = "items",
+                    .plurals = &.{
+                        .{ .count = 0, .value = "no items" },
+                        .{ .count = 1, .value = "1 item" },
+                        .{ .count = Translations.other_count, .value = "{count} items" },
+                    },
+                },
+            } },
+        },
+    };
+    setGlobal(&cat);
+    defer global_catalog = null;
+
+    const Tmpl = engine.template("{{count | tn:\"items\"}}");
+
+    const H = struct {
+        const T = Tmpl;
+        fn h(ctx: *Context) !void {
+            try ctx.render(T, .ok, .{ .count = @as(u32, 5) });
+        }
+    };
+    const App = Router.define(.{
+        .routes = &.{Router.get("/", H.h)},
+    });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var req: Request = .{ .method = .GET, .path = "/" };
+    defer req.deinit(alloc);
+    var resp = try App.handler(alloc, &req);
+    defer resp.deinit(alloc);
+    try std.testing.expectEqualStrings("5 items", resp.body.?);
+}
+
+test "ctx.render without global catalog passes key through" {
+    const Request = @import("../core/http/request.zig").Request;
+    _ = @import("../core/http/status.zig").StatusCode;
+    const Router = @import("../router/router.zig").Router;
+    const Context = @import("../middleware/context.zig").Context;
+    const engine = @import("pidgn_template");
+
+    // Ensure no global is installed.
+    global_catalog = null;
+
+    const Tmpl = engine.template("{{\"missing\" | t}}");
+
+    const H = struct {
+        const T = Tmpl;
+        fn h(ctx: *Context) !void {
+            try ctx.render(T, .ok, .{});
+        }
+    };
+    const App = Router.define(.{
+        .routes = &.{Router.get("/", H.h)},
+    });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var req: Request = .{ .method = .GET, .path = "/" };
+    defer req.deinit(alloc);
+    var resp = try App.handler(alloc, &req);
+    defer resp.deinit(alloc);
+    try std.testing.expectEqualStrings("missing", resp.body.?);
 }
 
 // Verify ctx.t reads the global catalog and the locale from assigns.
