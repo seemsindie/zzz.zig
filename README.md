@@ -229,7 +229,7 @@ Full documentation available at [docs.pidgn.dev](https://docs.pidgn.dev).
 |---------|-------------|
 | [pidgn_cli](https://github.com/seemsindie/pidgn_cli) | Command-line toolkit for the pidgn web framework |
 | [pidgn_docs](https://github.com/seemsindie/pidgn_docs) | Documentation for the pidgn web framework |
-| [pidgn_vscode](https://github.com/seemsindie/pidgn_vscode) | Visual Studio Code extension for pidgn template syntax |
+| [pidgn_vscode](https://github.com/seemsindie/pidgn_vscode) | Visual Studio Code extension — syntax highlighting, snippets, i18n pipe support. [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=Pidgn.pidgn-templates) |
 | [homebrew-pidgn](https://github.com/seemsindie/homebrew-pidgn) | Homebrew formulae for the pidgn CLI |
 | [pidgn_example_app](https://github.com/seemsindie/pidgn_example_app) | Reference application showcasing the pidgn web framework |
 | [pidgnworkspace](https://github.com/seemsindie/pidgnworkspace) | Development workspace and tooling for the pidgn ecosystem |
